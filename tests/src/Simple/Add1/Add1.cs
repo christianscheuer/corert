@@ -16,6 +16,10 @@ public class BringUpTest
 
     public static int Main()
     {
+        var s = new System.Uri("file://localhost/test", UriKind.Absolute);
+
+        Console.WriteLine(s.ToString());
+
         int y = Add1(1);
         if (y == 2) return Pass;
         else return Fail;
