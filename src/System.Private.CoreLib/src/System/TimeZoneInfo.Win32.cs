@@ -900,24 +900,26 @@ namespace System
         //
         static unsafe private string TryGetLocalizedNameByNativeResource(string filePath, int resource)
         {
-            using (SafeLibraryHandle handle =
-                       new SafeLibraryHandle(Interop.mincore.LoadLibraryEx(filePath, IntPtr.Zero, Interop.mincore.LOAD_LIBRARY_AS_DATAFILE)))
+            fixed (char* file = filePath.ToCharArray())
             {
-                if (!handle.IsInvalid)
+                using (SafeLibraryHandle handle =
+                           new SafeLibraryHandle(Interop.mincore.LoadLibraryEx(file, IntPtr.Zero, Interop.mincore.LOAD_LIBRARY_AS_DATAFILE)))
                 {
-                    StringBuilder localizedResource = StringBuilderCache.Acquire(Interop.mincore.LOAD_STRING_MAX_LENGTH);
-                    localizedResource.Length = Interop.mincore.LOAD_STRING_MAX_LENGTH;
-
-                    int result = Interop.mincore.LoadString(handle, resource,
-                                     localizedResource, localizedResource.Length);
-
-                    if (result != 0)
+                    if (!handle.IsInvalid)
                     {
-                        return StringBuilderCache.GetStringAndRelease(localizedResource);
+                        StringBuilder localizedResource = StringBuilderCache.Acquire(Interop.mincore.LOAD_STRING_MAX_LENGTH);
+                        localizedResource.Length = Interop.mincore.LOAD_STRING_MAX_LENGTH;
+
+                        int result = Interop.mincore.LoadString(handle, resource,
+                                         localizedResource, localizedResource.Length);
+
+                        if (result != 0)
+                        {
+                            return StringBuilderCache.GetStringAndRelease(localizedResource);
+                        }
                     }
                 }
             }
-
             return String.Empty;
         }
 
