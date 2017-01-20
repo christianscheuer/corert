@@ -14,7 +14,8 @@ namespace System.IO
 
         public static char[] GetInvalidPathChars() => new char[] { '\0' };
 
-        private static readonly bool s_isMac = Interop.Sys.GetUnixName() == "OSX";
+        // CMS TODO:
+        private static readonly bool s_isMac = true;//Interop.Sys.GetUnixName() == "OSX";
 
         // Expands the given path to a fully qualified path. 
         public static string GetFullPath(string path)
