@@ -5,6 +5,7 @@
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
 using System.Reflection.Runtime.General;
 using System.Reflection.Runtime.MethodInfos;
 
@@ -33,8 +34,9 @@ namespace System.Reflection.Runtime.TypeInfos
     //   - Overrides many "NotImplemented" members in TypeInfo with abstracts so failure to implement
     //     shows up as build error.
     //
+    [Serializable]
     [DebuggerDisplay("{_debugName}")]
-    internal abstract partial class RuntimeTypeInfo : TypeInfo, ITraceableTypeMember, ICloneable, IRuntimeImplementedType
+    internal abstract partial class RuntimeTypeInfo : TypeInfo, ISerializable, ITraceableTypeMember, ICloneable, IRuntimeImplementedType
     {
         protected RuntimeTypeInfo()
         {
@@ -194,6 +196,14 @@ namespace System.Reflection.Runtime.TypeInfos
         public sealed override InterfaceMapping GetInterfaceMap(Type interfaceType)
         {
             throw new PlatformNotSupportedException(SR.PlatformNotSupported_InterfaceMap);
+        }
+
+        public void GetObjectData(SerializationInfo info, StreamingContext context)
+        {
+            if (info == null)
+                throw new ArgumentNullException(nameof(info));
+
+            UnitySerializationHolder.GetUnitySerializationInfo(info, this);
         }
 
         //
@@ -356,12 +366,12 @@ namespace System.Reflection.Runtime.TypeInfos
             }
         }
 
-        public sealed override int MetadataToken
+        //
+        // Left unsealed as there are so many subclasses. Need to be overriden by EcmaFormatRuntimeNamedTypeInfo and RuntimeConstructedGenericTypeInfo
+        //
+        public abstract override int MetadataToken
         {
-            get
-            {
-                throw new InvalidOperationException(SR.NoMetadataTokenAvailable);
-            }
+            get;
         }
 
         public sealed override Module Module
@@ -707,6 +717,14 @@ namespace System.Reflection.Runtime.TypeInfos
 
         internal abstract RuntimeTypeHandle InternalTypeHandleIfAvailable { get; }
 
+        internal bool IsDelegate
+        {
+            get
+            {
+                return 0 != (Classification & TypeClassification.IsDelegate);
+            }
+        }
+
         //
         // Returns true if it's possible to ask for a list of members and the base type without triggering a MissingMetadataException.
         //
@@ -833,7 +851,7 @@ namespace System.Reflection.Runtime.TypeInfos
             {
                 QTypeDefRefOrSpec baseTypeDefRefOrSpec = TypeRefDefOrSpecForBaseType;
                 RuntimeTypeInfo baseType = null;
-                if (!baseTypeDefRefOrSpec.IsNull)
+                if (!baseTypeDefRefOrSpec.IsValid)
                 {
                     baseType = baseTypeDefRefOrSpec.Resolve(this.TypeContext);
                 }
@@ -883,6 +901,8 @@ namespace System.Reflection.Runtime.TypeInfos
 
                         if (baseType.Equals(enumType))
                             classification |= TypeClassification.IsEnum | TypeClassification.IsValueType;
+                        if (baseType.Equals(CommonRuntimeTypes.MulticastDelegate))
+                            classification |= TypeClassification.IsDelegate;
                         if (baseType.Equals(valueType) && !(this.Equals(enumType)))
                         {
                             classification |= TypeClassification.IsValueType;
@@ -909,6 +929,7 @@ namespace System.Reflection.Runtime.TypeInfos
             IsValueType = 0x00000002,
             IsEnum = 0x00000004,
             IsPrimitive = 0x00000008,
+            IsDelegate = 0x00000010,
         }
 
         object ICloneable.Clone()

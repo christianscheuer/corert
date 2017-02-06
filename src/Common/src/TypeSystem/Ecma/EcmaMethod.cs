@@ -14,7 +14,7 @@ using Internal.TypeSystem;
 
 namespace Internal.TypeSystem.Ecma
 {
-    public sealed class EcmaMethod : MethodDesc, EcmaModule.IEntityHandleObject
+    public sealed partial class EcmaMethod : MethodDesc, EcmaModule.IEntityHandleObject
     {
         private static class MethodFlags
         {
@@ -312,6 +312,19 @@ namespace Internal.TypeSystem.Ecma
             get
             {
                 return (GetMethodFlags(MethodFlags.AttributeMetadataCache | MethodFlags.RuntimeExport) & MethodFlags.RuntimeExport) != 0;
+            }
+        }
+
+        public override bool IsDefaultConstructor
+        {
+            get
+            {
+                MethodAttributes attributes = Attributes;
+                return attributes.IsRuntimeSpecialName() 
+                    && attributes.IsPublic()
+                    && Signature.Length == 0
+                    && Name == ".ctor"
+                    && !_type.IsAbstract;
             }
         }
 

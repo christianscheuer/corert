@@ -85,6 +85,14 @@ namespace ILCompiler
                 !method.ImplementationType.IsValueType;
         }
 
+        /// <summary>
+        /// Returns true if '<paramref name="method"/>' is the "Address" method on multidimensional array types.
+        /// </summary>
+        public static bool IsArrayAddressMethod(this MethodDesc method)
+        {
+            var arrayMethod = method as ArrayMethod;
+            return arrayMethod != null && arrayMethod.Kind == ArrayMethodKind.Address;
+        }
 
         /// <summary>
         /// Gets a value indicating whether this type has any generic virtual methods.
@@ -98,6 +106,14 @@ namespace ILCompiler
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Wrapper helper function around the IsCanonicalDefinitionType API on the TypeSystemContext
+        /// </summary>
+        public static bool IsCanonicalDefinitionType(this TypeDesc type, CanonicalFormKind kind)
+        {
+            return type.Context.IsCanonicalDefinitionType(type, kind);
         }
     }
 }

@@ -22,7 +22,7 @@ namespace ILCompiler.DependencyAnalysis
     /// are runtime-determined - the concrete dependency depends on the generic context the canonical
     /// entity is instantiated with.
     /// </remarks>
-    class DictionaryLayoutNode : DependencyNodeCore<NodeFactory>
+    public class DictionaryLayoutNode : DependencyNodeCore<NodeFactory>
     {
         class EntryHashTable : LockFreeReaderHashtable<GenericLookupResult, GenericLookupResult>
         {
@@ -63,7 +63,7 @@ namespace ILCompiler.DependencyAnalysis
             _layout = layout;
         }
 
-        public int GetSlotForEntry(GenericLookupResult entry)
+        public virtual int GetSlotForEntry(GenericLookupResult entry)
         {
             if (_layout == null)
                 ComputeLayout();
@@ -73,7 +73,7 @@ namespace ILCompiler.DependencyAnalysis
             return index;
         }
 
-        public IEnumerable<GenericLookupResult> Entries
+        public virtual IEnumerable<GenericLookupResult> Entries
         {
             get
             {

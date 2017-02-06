@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 class Program
@@ -15,10 +16,13 @@ class Program
         TestDelegateFatFunctionPointers.Run();
         TestVirtualMethodUseTracking.Run();
         TestSlotsInHierarchy.Run();
+        TestReflectionInvoke.Run();
         TestDelegateVirtualMethod.Run();
         TestDelegateInterfaceMethod.Run();
         TestThreadStaticFieldAccess.Run();
         TestConstrainedMethodCalls.Run();
+        TestInstantiatingUnboxingStubs.Run();
+        TestMDArrayAddressMethod.Run();
         TestNameManglingCollisionRegression.Run();
         TestUnusedGVMsDoNotCrashCompiler.Run();
 
@@ -326,6 +330,53 @@ class Program
         }
     }
 
+    class TestReflectionInvoke
+    {
+        struct Foo<T>
+        {
+            public int Value;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            public bool SetAndCheck<U>(int value, U check)
+            {
+                Value = value;
+                return check != null && typeof(T) == typeof(U);
+            }
+        }
+
+        public static void Run()
+        {
+            if (String.Empty.Length > 0)
+            {
+                // Make sure we compile this method body.
+                var tmp = new Foo<string>();
+                tmp.SetAndCheck<string>(0, null);
+            }
+
+            object o = new Foo<string>();
+
+            {
+                MethodInfo mi = typeof(Foo<string>).GetTypeInfo().GetDeclaredMethod("SetAndCheck").MakeGenericMethod(typeof(string));
+                if (!(bool)mi.Invoke(o, new object[] { 123, "hello" }))
+                    throw new Exception();
+
+                var foo = (Foo<string>)o;
+                if (foo.Value != 123)
+                    throw new Exception();
+
+                if ((bool)mi.Invoke(o, new object[] { 123, null }))
+                    throw new Exception();
+            }
+
+            // Uncomment when we have the type loader to buld invoke stub dictionaries.
+            /*{
+                MethodInfo mi = typeof(Foo<string>).GetTypeInfo().GetDeclaredMethod("SetAndCheck").MakeGenericMethod(typeof(object));
+                if ((bool)mi.Invoke(o, new object[] { 123, new object() }))
+                    throw new Exception();
+            }*/
+        }
+    }
+
     class TestThreadStaticFieldAccess
     {
         class TypeWithThreadStaticField<T>
@@ -416,6 +467,111 @@ class Program
 
             // If the FrobbedValue doesn't change when we frob, we must have done box+interface call.
             if (foo.FrobbedValue != 12345)
+                throw new Exception();
+        }
+    }
+
+    class TestInstantiatingUnboxingStubs
+    {
+        static volatile IFoo s_foo;
+
+        interface IFoo
+        {
+            bool IsInst(object o);
+
+            void Set(int value);
+        }
+
+        struct Foo<T> : IFoo
+        {
+            public int Value;
+
+            public bool IsInst(object o)
+            {
+                return o is T;
+            }
+
+            public void Set(int value)
+            {
+                Value = value;
+            }
+        }
+
+        public static void Run()
+        {
+            s_foo = new Foo<string>();
+
+            // Make sure the instantiation argument is properly passed
+            if (!s_foo.IsInst("ab"))
+                throw new Exception();
+
+            if (s_foo.IsInst(new object()))
+                throw new Exception();
+
+            // Make sure the byref to 'this' is properly passed
+            s_foo.Set(42);
+
+            var foo = (Foo<string>)s_foo;
+            if (foo.Value != 42)
+                throw new Exception();
+        }
+    }
+
+    class TestMDArrayAddressMethod
+    {
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void PassByRef(ref object x)
+        {
+            x = new Object();
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void DoGen<T>(object[,] arr)
+        {
+            // Here, the array type is known statically at the time of compilation
+            PassByRef(ref arr[0, 0]);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void PassByRef2<T>(ref T x)
+        {
+            x = default(T);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void DoGen2<T>(T[,] arr)
+        {
+            // Here, the array type needs to be looked up from the dictionary
+            PassByRef2<T>(ref arr[0, 0]);
+        }
+
+        public static void Run()
+        {
+            int exceptionsSeen = 0;
+
+            try
+            {
+                DoGen<object>(new string[1, 1]);
+            }
+            catch (ArrayTypeMismatchException)
+            {
+                exceptionsSeen++;
+            }
+
+            DoGen<object>(new object[1, 1]);
+
+            try
+            {
+                DoGen2<object>(new string[1, 1]);
+            }
+            catch (ArrayTypeMismatchException)
+            {
+                exceptionsSeen++;
+            }
+
+            DoGen2<object>(new object[1, 1]);
+
+            if (exceptionsSeen != 2)
                 throw new Exception();
         }
     }

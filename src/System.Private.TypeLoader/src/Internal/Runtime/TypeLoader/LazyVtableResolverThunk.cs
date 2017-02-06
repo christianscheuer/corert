@@ -295,7 +295,7 @@ namespace Internal.Runtime.TypeLoader
                 }
 
                 TypeSystem.NativeFormat.NativeFormatType definingNativeFormatType = (TypeSystem.NativeFormat.NativeFormatType)definingType.GetTypeDefinition();
-                IntPtr moduleToLookIn = definingNativeFormatType.MetadataUnit.RuntimeModule;
+                NativeFormatModuleInfo moduleToLookIn = definingNativeFormatType.MetadataUnit.RuntimeModuleInfo;
 
                 TypeLoaderEnvironment.VirtualResolveDataResult virtualSlotInfo;
                 if (!TypeLoaderEnvironment.TryGetVirtualResolveData(moduleToLookIn, definingType.RuntimeTypeHandle, Array.Empty<RuntimeTypeHandle>(), ref methodSignatureComparer, out virtualSlotInfo))
@@ -490,7 +490,7 @@ namespace Internal.Runtime.TypeLoader
                     continue;
 
                 MethodSignatureComparer sigComparer = new MethodSignatureComparer(method.MetadataReader, method.Handle);
-                if (!sigComparer.IsMatchingNativeLayoutMethodNameAndSignature(methodNameAndSig.Name, methodNameAndSig.Signature.NativeLayoutSignature()))
+                if (!sigComparer.IsMatchingNativeLayoutMethodNameAndSignature(methodNameAndSig.Name, methodNameAndSig.Signature))
                     continue;
 
                 // At this point we've matched

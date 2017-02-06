@@ -102,6 +102,20 @@ namespace Internal.IL.Stubs
             }
         }
 
+        public void EmitLdArga(int index)
+        {
+            if (index < 0x100)
+            {
+                Emit(ILOpcode.ldarga_s);
+                EmitByte((byte)index);
+            }
+            else
+            {
+                Emit(ILOpcode.ldarga);
+                EmitUInt16((ushort)index);
+            }
+        }
+
         public void EmitLdLoc(ILLocalVariable variable)
         {
             int index = (int)variable;
@@ -242,6 +256,14 @@ namespace Internal.IL.Stubs
             _locals = locals;
             _tokens = tokens;
             _method = owningMethod;
+        }
+
+        public ILStubMethodIL(ILStubMethodIL methodIL)
+        {
+            _ilBytes = methodIL._ilBytes;
+            _locals = methodIL._locals;
+            _tokens = methodIL._tokens;
+            _method = methodIL._method;
         }
 
         public override MethodDesc OwningMethod

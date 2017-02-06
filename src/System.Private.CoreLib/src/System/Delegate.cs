@@ -9,6 +9,7 @@ using System.Runtime.Serialization;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Diagnostics;
+using Internal.Reflection.Augments;
 using Internal.Runtime.Augments;
 using Internal.Runtime.CompilerServices;
 
@@ -242,7 +243,7 @@ namespace System
             // This sort of delegate is invoked by calling the thunk function pointer with the arguments to the delegate + a reference to the delegate object itself.
             m_firstParameter = this;
             m_functionPointer = functionPointerThunk;
-            OpenMethodResolver instanceMethodResolver = new OpenMethodResolver(default(RuntimeTypeHandle), functionPointer, 0);
+            OpenMethodResolver instanceMethodResolver = new OpenMethodResolver(default(RuntimeTypeHandle), functionPointer, default(GCHandle), 0);
             m_extraFunctionPointerOrData = instanceMethodResolver.ToIntPtr();
         }
 
@@ -252,7 +253,7 @@ namespace System
             // This sort of delegate is invoked by calling the thunk function pointer with the arguments to the delegate + a reference to the delegate object itself.
             m_firstParameter = this;
             m_functionPointer = GetThunk(OpenInstanceThunk);
-            OpenMethodResolver instanceMethodResolver = new OpenMethodResolver(default(RuntimeTypeHandle), functionPointer, 0);
+            OpenMethodResolver instanceMethodResolver = new OpenMethodResolver(default(RuntimeTypeHandle), functionPointer, default(GCHandle), 0);
             m_extraFunctionPointerOrData = instanceMethodResolver.ToIntPtr();
         }
 
@@ -702,6 +703,24 @@ namespace System
                 return m_firstParameter;
             }
         }
+
+        // V2 api: Creates open or closed delegates to static or instance methods - relaxed signature checking allowed. 
+        public static Delegate CreateDelegate(Type type, object firstArgument, MethodInfo method) => CreateDelegate(type, firstArgument, method, throwOnBindFailure: true);
+        public static Delegate CreateDelegate(Type type, object firstArgument, MethodInfo method, bool throwOnBindFailure) => ReflectionAugments.ReflectionCoreCallbacks.CreateDelegate(type, firstArgument, method, throwOnBindFailure);
+
+        // V1 api: Creates open delegates to static or instance methods - relaxed signature checking allowed.
+        public static Delegate CreateDelegate(Type type, MethodInfo method) => CreateDelegate(type, method, throwOnBindFailure: true);
+        public static Delegate CreateDelegate(Type type, MethodInfo method, bool throwOnBindFailure) => ReflectionAugments.ReflectionCoreCallbacks.CreateDelegate(type, method, throwOnBindFailure);
+
+        // V1 api: Creates closed delegates to instance methods only, relaxed signature checking disallowed.
+        public static Delegate CreateDelegate(Type type, object target, string method) => CreateDelegate(type, target, method, ignoreCase: false, throwOnBindFailure: true);
+        public static Delegate CreateDelegate(Type type, object target, string method, bool ignoreCase) => CreateDelegate(type, target, method, ignoreCase, throwOnBindFailure: true);
+        public static Delegate CreateDelegate(Type type, object target, string method, bool ignoreCase, bool throwOnBindFailure) => ReflectionAugments.ReflectionCoreCallbacks.CreateDelegate(type, target, method, ignoreCase, throwOnBindFailure);
+
+        // V1 api: Creates open delegates to static methods only, relaxed signature checking disallowed.
+        public static Delegate CreateDelegate(Type type, Type target, string method) => CreateDelegate(type, target, method, ignoreCase: false, throwOnBindFailure: true);
+        public static Delegate CreateDelegate(Type type, Type target, string method, bool ignoreCase) => CreateDelegate(type, target, method, ignoreCase, throwOnBindFailure: true);
+        public static Delegate CreateDelegate(Type type, Type target, string method, bool ignoreCase, bool throwOnBindFailure) => ReflectionAugments.ReflectionCoreCallbacks.CreateDelegate(type, target, method, ignoreCase, throwOnBindFailure);
 
         public virtual object Clone()
         {

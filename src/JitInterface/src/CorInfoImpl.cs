@@ -248,7 +248,7 @@ namespace Internal.JitInterface
         private ObjectNode.ObjectData EncodeEHInfo()
         {
             var builder = new ObjectDataBuilder();
-            builder.Alignment = 1;
+            builder.RequireInitialAlignment(1);
 
             int totalClauses = _ehClauses.Length;
 
@@ -499,7 +499,8 @@ namespace Internal.JitInterface
             Get_CORINFO_SIG_INFO(method.Signature, out sig);
 
             // Does the method have a hidden parameter?
-            if (method.RequiresInstArg() && !isFatFunctionPointer)
+            if ((method.RequiresInstArg() && !isFatFunctionPointer && !_compilation.TypeSystemContext.IsSpecialUnboxingThunkTargetMethod(method))
+                || method.IsArrayAddressMethod())
             {
                 sig.callConv |= CorInfoCallConv.CORINFO_CALLCONV_PARAMTYPE;
             }
@@ -805,7 +806,7 @@ namespace Internal.JitInterface
             // transitions in inlined methods today (impCheckForPInvokeCall is not called for inlinees and number of other places
             // depend on it). To get a decent code with this limitation, we mirror CoreCLR behavior: Check
             // whether PInvoke stub is required here, and disable inlining of PInvoke methods in getMethodAttribsInternal.
-            return _compilation.PInvokeILProvider.IsStubRequired(method);
+            return ((Internal.IL.Stubs.PInvokeILStubMethodIL)_compilation.GetMethodIL(method)).IsStubRequired;
         }
 
         private bool satisfiesMethodConstraints(CORINFO_CLASS_STRUCT_* parent, CORINFO_METHOD_STRUCT_* method)
@@ -1014,6 +1015,8 @@ namespace Internal.JitInterface
 
             CorInfoFlag result = (CorInfoFlag)0;
 
+            var metadataType = type as MetadataType;
+
             // The array flag is used to identify the faked-up methods on
             // array types, i.e. .ctor, Get, Set and Address
             if (type.IsArray)
@@ -1029,6 +1032,10 @@ namespace Internal.JitInterface
             {
                 result |= CorInfoFlag.CORINFO_FLG_VALUECLASS;
 
+                // The CLR has more complicated rules around CUSTOMLAYOUT, but this will do.
+                if (metadataType.IsExplicitLayout)
+                    result |= CorInfoFlag.CORINFO_FLG_CUSTOMLAYOUT;
+
                 // TODO
                 // if (type.IsUnsafeValueType)
                 //    result |= CorInfoFlag.CORINFO_FLG_UNSAFE_VALUECLASS;
@@ -1043,7 +1050,6 @@ namespace Internal.JitInterface
             if (type.IsDelegate)
                 result |= CorInfoFlag.CORINFO_FLG_DELEGATE;
 
-            var metadataType = type as MetadataType;
             if (metadataType != null)
             {
                 if (metadataType.ContainsGCPointers)
@@ -1054,6 +1060,10 @@ namespace Internal.JitInterface
 
                 if (metadataType.IsSealed)
                     result |= CorInfoFlag.CORINFO_FLG_FINAL;
+
+                // Assume overlapping fields for explicit layout.
+                if (metadataType.IsExplicitLayout)
+                    result |= CorInfoFlag.CORINFO_FLG_OVERLAPPING_FIELDS;
             }
 
             return (uint)result;
@@ -2332,11 +2342,19 @@ namespace Internal.JitInterface
 
                 if (!runtimeLookup)
                 {
-                    throw new NotImplementedException("LDTOKEN Method");
+                    if (pResolvedToken.tokenType == CorInfoTokenKind.CORINFO_TOKENKIND_Ldtoken)
+                        pResult.lookup.constLookup.handle = (CORINFO_GENERIC_STRUCT_*)ObjectToHandle(_compilation.NodeFactory.RuntimeMethodHandle(md));
+                    else
+                        throw new NotImplementedException();
                 }
                 else
                 {
-                    pResult.lookup.lookupKind.runtimeLookupFlags = (ushort)ReadyToRunHelperId.MethodDictionary;
+                    if (pResolvedToken.tokenType == CorInfoTokenKind.CORINFO_TOKENKIND_Ldtoken)
+                        pResult.lookup.lookupKind.runtimeLookupFlags = (ushort)ReadyToRunHelperId.MethodHandle;
+                    else if (pResolvedToken.tokenType == CorInfoTokenKind.CORINFO_TOKENKIND_Method)
+                        pResult.lookup.lookupKind.runtimeLookupFlags = (ushort)ReadyToRunHelperId.MethodDictionary;
+                    else
+                        throw new NotImplementedException();
                 }
             }
             else if (!fEmbedParent && pResolvedToken.hField != null)
@@ -2634,6 +2652,11 @@ namespace Internal.JitInterface
                     targetMethod = _compilation.ExpandIntrinsicForCallsite(targetMethod, methodIL.OwningMethod);
                 }
 
+                // For multidim array Address method, we pretend the method requires a hidden instantiation argument
+                // (even though it doesn't need one). We'll actually swap the method out for a differnt one with
+                // a matching calling convention later. See ArrayMethod for a description.
+                bool referencingArrayAddressMethod = targetMethod.IsArrayAddressMethod();
+
                 MethodDesc concreteMethod = targetMethod;
                 targetMethod = targetMethod.GetCanonMethodTarget(CanonicalFormKind.Specific);
 
@@ -2663,7 +2686,8 @@ namespace Internal.JitInterface
                     // result in getting back the unresolved target. Don't capture runtime determined dependencies
                     // in that case and rely on the dependency analysis computing them based on seeing a call to the
                     // canonical method body.
-                    if (targetMethod.IsSharedByGenericInstantiations && !inlining && !resolvedConstraint)
+                    // Same applies to array address method (the method doesn't actually do any generic lookups).
+                    if (targetMethod.IsSharedByGenericInstantiations && !inlining && !resolvedConstraint && !referencingArrayAddressMethod)
                     {
                         MethodDesc runtimeDeterminedMethod = (MethodDesc)GetRuntimeDeterminedObjectForToken(ref pResolvedToken);
                         pResult.codePointerOrStubLookup.constLookup.addr = (void*)ObjectToHandle(
@@ -2684,7 +2708,7 @@ namespace Internal.JitInterface
                     {
                         instParam = _compilation.NodeFactory.MethodGenericDictionary(concreteMethod);
                     }
-                    else if (targetMethod.RequiresInstMethodTableArg())
+                    else if (targetMethod.RequiresInstMethodTableArg() || referencingArrayAddressMethod)
                     {
                         // Ask for a constructed type symbol because we need the vtable to get to the dictionary
                         instParam = _compilation.NodeFactory.ConstructedTypeSymbol(concreteMethod.OwningType);
@@ -2695,8 +2719,19 @@ namespace Internal.JitInterface
                         pResult.instParamLookup.accessType = InfoAccessType.IAT_VALUE;
                         pResult.instParamLookup.addr = (void*)ObjectToHandle(instParam);
 
-                        pResult.codePointerOrStubLookup.constLookup.addr = (void*)ObjectToHandle(
-                            _compilation.NodeFactory.ShadowConcreteMethod(concreteMethod));
+                        if (!referencingArrayAddressMethod)
+                        {
+                            pResult.codePointerOrStubLookup.constLookup.addr = (void*)ObjectToHandle(
+                                _compilation.NodeFactory.ShadowConcreteMethod(concreteMethod));
+                        }
+                        else
+                        {
+                            // We don't want array Address method to be modeled in the generic dependency analysis.
+                            // The method doesn't actually have runtime determined dependencies (won't do
+                            // any generic lookups).
+                            pResult.codePointerOrStubLookup.constLookup.addr = (void*)ObjectToHandle(
+                                _compilation.NodeFactory.MethodEntrypoint(targetMethod));
+                        }
                     }
                     else if (targetMethod.AcquiresInstMethodTableFromThis())
                     {
@@ -2751,8 +2786,13 @@ namespace Internal.JitInterface
                     pResult.exactContextNeedsRuntimeLookup = false;
                     pResult.codePointerOrStubLookup.constLookup.accessType = InfoAccessType.IAT_VALUE;
 
+                    // Get the slot defining method to make sure our virtual method use tracking gets this right.
+                    // For normal C# code the targetMethod will always be newslot.
+                    MethodDesc slotDefiningMethod = targetMethod.IsNewSlot ?
+                        targetMethod : MetadataVirtualMethodAlgorithm.FindSlotDefiningMethodForVirtualMethod(targetMethod);
+
                     pResult.codePointerOrStubLookup.constLookup.addr =
-                            (void*)ObjectToHandle(_compilation.NodeFactory.ReadyToRunHelper(ReadyToRunHelperId.ResolveVirtualFunction, targetMethod));
+                            (void*)ObjectToHandle(_compilation.NodeFactory.ReadyToRunHelper(ReadyToRunHelperId.ResolveVirtualFunction, slotDefiningMethod));
                 }
 
                 // The current CoreRT ReadyToRun helpers do not handle null thisptr - ask the JIT to emit explicit null checks
@@ -2791,8 +2831,13 @@ namespace Internal.JitInterface
                     pResult.exactContextNeedsRuntimeLookup = false;
                     pResult.codePointerOrStubLookup.constLookup.accessType = InfoAccessType.IAT_VALUE;
 
+                    // Get the slot defining method to make sure our virtual method use tracking gets this right.
+                    // For normal C# code the targetMethod will always be newslot.
+                    MethodDesc slotDefiningMethod = targetMethod.IsNewSlot ?
+                        targetMethod : MetadataVirtualMethodAlgorithm.FindSlotDefiningMethodForVirtualMethod(targetMethod);
+
                     pResult.codePointerOrStubLookup.constLookup.addr =
-                            (void*)ObjectToHandle(_compilation.NodeFactory.ReadyToRunHelper(ReadyToRunHelperId.VirtualCall, targetMethod));
+                            (void*)ObjectToHandle(_compilation.NodeFactory.ReadyToRunHelper(ReadyToRunHelperId.VirtualCall, slotDefiningMethod));
                 }
 
                 // The current CoreRT ReadyToRun helpers do not handle null thisptr - ask the JIT to emit explicit null checks

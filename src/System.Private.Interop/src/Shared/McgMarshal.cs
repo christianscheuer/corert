@@ -249,7 +249,7 @@ namespace System.Runtime.InteropServices
             if (lenUnicode > 0)
             {
                 char[] buffer = new char[lenUnicode];
-                fixed (char* pTemp = buffer)
+                fixed (char* pTemp = &buffer[0])
                 {
                     ExternalInterop.ConvertMultiByteToWideChar(new System.IntPtr(newBuffer),
                                                                lenAnsi,
@@ -446,12 +446,9 @@ namespace System.Runtime.InteropServices
         /// <param name="nativeValue">Single ANSI byte value.</param>
         public static unsafe char AnsiCharToWideChar(byte nativeValue)
         {
-            char[] buffer = new char[1];
-            fixed (char* pTemp = buffer)
-            {
-                ExternalInterop.ConvertMultiByteToWideChar(new System.IntPtr(&nativeValue), 1, new System.IntPtr(pTemp), 1);
-                return buffer[0];
-            }
+            char ch;
+            ExternalInterop.ConvertMultiByteToWideChar(new System.IntPtr(&nativeValue), 1, new System.IntPtr(&ch), 1);
+            return ch;
         }
 
         /// <summary>
@@ -1364,7 +1361,7 @@ namespace System.Runtime.InteropServices
         
         #region "PInvoke Delegate"
 
-#if !CORECLR
+#if !CORECLR && !CORERT
         private static class AsmCode
         {
             private const MethodImplOptions InternalCall = (MethodImplOptions)0x1000;
@@ -1692,7 +1689,7 @@ namespace System.Runtime.InteropServices
         /// </summary>
         public static IntPtr GetCurrentCalleeOpenStaticDelegateFunctionPointer()
         {
-#if RHTESTCL || CORECLR
+#if RHTESTCL || CORECLR || CORERT
             throw new NotSupportedException();
 #else
             //
@@ -1720,7 +1717,7 @@ namespace System.Runtime.InteropServices
         /// </summary>
         public static T GetCurrentCalleeDelegate<T>() where T : class // constraint can't be System.Delegate
         {
-#if RHTESTCL || CORECLR
+#if RHTESTCL || CORECLR || CORERT
             throw new NotSupportedException();
 #else
             //

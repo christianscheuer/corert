@@ -1137,6 +1137,9 @@
   <data name="InvalidProgram_Vararg" xml:space="preserve">
     <value>Method '{0}' has a variable argument list. Variable argument lists are not supported in .NET Core.</value>
   </data>
+  <data name="InvalidProgram_CallVirtFinalize" xml:space="preserve">
+    <value>Object.Finalize() can not be called directly. It is only callable by the runtime.</value>
+  </data>
   <data name="InvalidTimeZone_InvalidRegistryData" xml:space="preserve">
     <value>The time zone ID '{0}' was found on the local computer, but the registry information was corrupt.</value>
   </data>
@@ -2136,5 +2139,17 @@
   </data>
   <data name="ArgumentOutOfRange_BinaryReaderFillBuffer" xml:space="preserve">
     <value>The number of bytes requested does not fit into BinaryReader's internal buffer.</value>
+  </data>
+  <data name="Serialization_InsufficientDeserializationState" xml:space="preserve">
+    <value>Insufficient state to deserialize the object. Missing field '{0}'.</value>
+  </data>
+  <data name="NotSupported_UnitySerHolder" xml:space="preserve">
+    <value>The UnitySerializationHolder object is designed to transmit information about other types and is not serializable itself.</value>
+  </data>
+  <data name="Serialization_UnableToFindModule" xml:space="preserve">
+    <value>The given module {0} cannot be found within the assembly {1}.</value>
+  </data>
+  <data name="Argument_InvalidUnity" xml:space="preserve">
+    <value>Invalid Unity type.</value>
   </data>
 </root>

@@ -28,6 +28,7 @@ namespace ILCompiler.DependencyAnalysis
 
         // The following helpers are used for generic lookups only
         TypeHandle,
+        MethodHandle,
         FieldHandle,
         MethodDictionary,
         MethodEntry
@@ -74,6 +75,14 @@ namespace ILCompiler.DependencyAnalysis
                         // Make sure we can compute static field layout now so we can fail early
                         DefType defType = (DefType)target;
                         defType.ComputeStaticFieldLayout(StaticLayoutKind.StaticRegionSizesAndFields);
+                    }
+                    break;
+                case ReadyToRunHelperId.VirtualCall:
+                    {
+                        // Make sure we aren't trying to callvirt Object.Finalize
+                        MethodDesc method = (MethodDesc)target;
+                        if (method.IsFinalizer)
+                            throw new TypeSystemException.InvalidProgramException(ExceptionStringID.InvalidProgramCallVirtFinalize, method);
                     }
                     break;
             }

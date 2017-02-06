@@ -8,6 +8,7 @@ using System.Threading;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Reflection.Runtime.General;
 
 using Internal.Runtime;
 using Internal.Runtime.Augments;
@@ -288,6 +289,14 @@ namespace Internal.Runtime.TypeLoader
         //
         // Returns the native layout info reader
         //
+        internal unsafe NativeReader GetNativeLayoutInfoReader(NativeFormatModuleInfo module)
+        {
+            return GetNativeLayoutInfoReader(module.Handle);
+        }
+
+        //
+        // Returns the native layout info reader
+        //
         internal unsafe NativeReader GetNativeLayoutInfoReader(IntPtr moduleHandle)
         {
             Debug.Assert(moduleHandle != IntPtr.Zero);
@@ -416,7 +425,7 @@ namespace Internal.Runtime.TypeLoader
             Instantiation methodGenericArguments = typeSystemContext.ResolveRuntimeTypeHandles(methodGenericArgumentHandles ?? Array.Empty<RuntimeTypeHandle>());
 
             NativeLayoutInfoLoadContext nativeLayoutContext = new NativeLayoutInfoLoadContext();
-            nativeLayoutContext._moduleHandle = moduleHandle;
+            nativeLayoutContext._module = ModuleList.GetModuleInfoByHandle(moduleHandle);
             nativeLayoutContext._typeSystemContext = typeSystemContext;
             nativeLayoutContext._typeArgumentHandles = typeGenericArguments;
             nativeLayoutContext._methodArgumentHandles = methodGenericArguments;
@@ -495,7 +504,7 @@ namespace Internal.Runtime.TypeLoader
 
         // get the generics hash table and external references table for a module
         // TODO multi-file: consider whether we want to cache this info
-        private unsafe bool GetHashtableFromBlob(IntPtr moduleHandle, ReflectionMapBlob blobId, out NativeHashtable hashtable, out ExternalReferencesTable externalReferencesLookup)
+        private unsafe bool GetHashtableFromBlob(NativeFormatModuleInfo module, ReflectionMapBlob blobId, out NativeHashtable hashtable, out ExternalReferencesTable externalReferencesLookup)
         {
             byte* pBlob;
             uint cbBlob;
@@ -503,7 +512,7 @@ namespace Internal.Runtime.TypeLoader
             hashtable = default(NativeHashtable);
             externalReferencesLookup = default(ExternalReferencesTable);
 
-            if (!RuntimeAugments.FindBlob(moduleHandle, (int)blobId, new IntPtr(&pBlob), new IntPtr(&cbBlob)))
+            if (!module.TryFindBlob(blobId, out pBlob, out cbBlob))
                 return false;
 
             NativeReader reader = new NativeReader(pBlob, cbBlob);
@@ -511,7 +520,7 @@ namespace Internal.Runtime.TypeLoader
 
             hashtable = new NativeHashtable(parser);
 
-            return externalReferencesLookup.InitializeNativeReferences(moduleHandle);
+            return externalReferencesLookup.InitializeNativeReferences(module);
         }
 
         public static unsafe void GetFieldAlignmentAndSize(RuntimeTypeHandle fieldType, out int alignment, out int size)
@@ -617,14 +626,14 @@ namespace Internal.Runtime.TypeLoader
             return true;
         }
 
-        public bool TryResolveSingleMetadataFixup(IntPtr module, int metadataToken, MetadataFixupKind fixupKind, out IntPtr fixupResolution)
+        public bool TryResolveSingleMetadataFixup(ModuleInfo module, int metadataToken, MetadataFixupKind fixupKind, out IntPtr fixupResolution)
         {
 #if SUPPORTS_NATIVE_METADATA_TYPE_LOADING
             using (LockHolder.Hold(_typeLoaderLock))
             {
                 try
                 {
-                    return TypeBuilder.TryResolveSingleMetadataFixup(module, metadataToken, fixupKind, out fixupResolution);
+                    return TypeBuilder.TryResolveSingleMetadataFixup((NativeFormatModuleInfo)module, metadataToken, fixupKind, out fixupResolution);
                 }
                 catch (Exception ex)
                 {
@@ -642,7 +651,7 @@ namespace Internal.Runtime.TypeLoader
 #endif
         }
 
-        public bool TryDispatchMethodOnTarget(IntPtr module, int metadataToken, RuntimeTypeHandle targetInstanceType, out IntPtr methodAddress)
+        public bool TryDispatchMethodOnTarget(NativeFormatModuleInfo module, int metadataToken, RuntimeTypeHandle targetInstanceType, out IntPtr methodAddress)
         {
             using (LockHolder.Hold(_typeLoaderLock))
             {
@@ -655,7 +664,7 @@ namespace Internal.Runtime.TypeLoader
         }
 
 #if SUPPORTS_NATIVE_METADATA_TYPE_LOADING
-        internal DispatchCellInfo ConvertDispatchCellInfo(IntPtr module, DispatchCellInfo cellInfo)
+        internal DispatchCellInfo ConvertDispatchCellInfo(NativeFormatModuleInfo module, DispatchCellInfo cellInfo)
         {
             using (LockHolder.Hold(_typeLoaderLock))
             {
@@ -675,28 +684,25 @@ namespace Internal.Runtime.TypeLoader
         }
 
         public unsafe bool TryGetOrCreateNamedTypeForMetadata(
-            MetadataReader metadataReader,
-            TypeDefinitionHandle typeDefHandle,
+            QTypeDefinition qTypeDefinition,
             out RuntimeTypeHandle runtimeTypeHandle)
         {
-            if (TryGetNamedTypeForMetadata(metadataReader, typeDefHandle, out runtimeTypeHandle))
+            if (TryGetNamedTypeForMetadata(qTypeDefinition, out runtimeTypeHandle))
             {
                 return true;
             }
+
 #if SUPPORTS_NATIVE_METADATA_TYPE_LOADING
-            IntPtr moduleHandle = ModuleList.Instance.GetModuleForMetadataReader(metadataReader);
-            IntPtr runtimeTypeHandleAsIntPtr;
-            if (TryResolveSingleMetadataFixup(
-                moduleHandle,
-                typeDefHandle.ToHandle(metadataReader).ToInt(),
-                MetadataFixupKind.TypeHandle,
-                out runtimeTypeHandleAsIntPtr))
+            using (LockHolder.Hold(_typeLoaderLock))
             {
+                IntPtr runtimeTypeHandleAsIntPtr;
+                TypeBuilder.ResolveSingleTypeDefinition(qTypeDefinition, out runtimeTypeHandleAsIntPtr);
                 runtimeTypeHandle = *(RuntimeTypeHandle*)&runtimeTypeHandleAsIntPtr;
                 return true;
             }
-#endif
+#else
             return false;
+#endif
         }
     }
 }

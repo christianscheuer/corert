@@ -59,40 +59,6 @@ namespace Internal.TypeSystem.Interop
             return false;
         }
 
-        /// <summary>
-        /// Returns true if <paramref name="method"/> requires a stub to be generated.
-        /// </summary>
-        public static bool IsStubRequired(MethodDesc method, PInvokeILEmitterConfiguration configuration)
-        {
-            Debug.Assert(method.IsPInvoke);
-
-            // TODO: true if there are any custom marshalling rules on the parameters
-
-            TypeDesc returnType = method.Signature.ReturnType;
-            if (!MarshalHelpers.IsBlittableType(returnType) && !returnType.IsVoid)
-                return true;
-
-            for (int i = 0; i < method.Signature.Length; i++)
-            {
-                if (!MarshalHelpers.IsBlittableType(method.Signature[i]))
-                {
-                    return true;
-                }
-            }
-
-            PInvokeMetadata methodData = method.GetPInvokeMethodMetadata();    
-            if (UseLazyResolution(method, methodData.Module, configuration))
-            {
-                return true;
-            }
-            if ((methodData.Attributes & PInvokeAttributes.SetLastError) == PInvokeAttributes.SetLastError)
-            {
-                return true;
-            }
-
-            return false;
-        }
-
 
         /// <summary>
         /// Returns true if the PInvoke target should be resolved lazily.
@@ -106,6 +72,15 @@ namespace Internal.TypeSystem.Interop
             bool? forceLazyResolution = configuration.ForceLazyResolution;
             if (forceLazyResolution.HasValue)
                 return forceLazyResolution.Value;
+
+            // In multi-module library mode, the WinRT p/invokes in System.Private.Interop cause linker failures
+            // since we don't link against the OS libraries containing those APIs. Force them to be lazy.
+            // See https://github.com/dotnet/corert/issues/2601
+            string assemblySimpleName = ((IAssemblyDesc)((MetadataType)method.OwningType).Module).GetName().Name;
+            if (assemblySimpleName == "System.Private.Interop")
+            {
+                return true;
+            }
 
             // Determine whether this call should be made through a lazy resolution or a static reference
             // Eventually, this should be controlled by a custom attribute (or an extension to the metadata format).

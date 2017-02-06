@@ -72,11 +72,19 @@ namespace Internal.TypeSystem
             }
         }
 
-        public static MethodDesc GetDefaultConstructor(this TypeDesc type)
+        /// <summary>
+        /// Gets the parameterless instance constructor on the specified type. To get the default constructor, use <see cref="TypeDesc.GetDefaultConstructor"/>.
+        /// </summary>
+        public static MethodDesc GetParameterlessConstructor(this TypeDesc type)
         {
             // TODO: Do we want check for specialname/rtspecialname? Maybe add another overload on GetMethod?
             var sig = new MethodSignature(0, 0, type.Context.GetWellKnownType(WellKnownType.Void), TypeDesc.EmptyTypes);
             return type.GetMethod(".ctor", sig);
+        }
+
+        public static bool HasExplicitOrImplicitDefaultConstructor(this TypeDesc type)
+        {
+            return type.IsValueType || type.GetDefaultConstructor() != null;
         }
 
         internal static MethodDesc FindMethodOnExactTypeWithMatchingTypicalMethod(this TypeDesc type, MethodDesc method)
@@ -266,11 +274,16 @@ namespace Internal.TypeSystem
         }
 
         /// <summary>
-        /// Given Foo&lt;T&gt;, returns Foo&lt;!0&gt;.
+        /// Creates an open instantiation of a type. Given Foo&lt;T&gt;, returns Foo&lt;!0&gt;.
+        /// If the type is not generic, returns the <paramref name="type"/>.
         /// </summary>
-        private static InstantiatedType InstantiateAsOpen(this MetadataType type)
+        public static TypeDesc InstantiateAsOpen(this TypeDesc type)
         {
-            Debug.Assert(type.IsGenericDefinition);
+            if (!type.IsGenericDefinition)
+            {
+                Debug.Assert(!type.HasInstantiation);
+                return type;
+            }
 
             TypeSystemContext context = type.Context;
 
@@ -280,7 +293,26 @@ namespace Internal.TypeSystem
                 inst[i] = context.GetSignatureVariable(i, false);
             }
 
-            return context.GetInstantiatedType(type, new Instantiation(inst));
+            return context.GetInstantiatedType((MetadataType)type, new Instantiation(inst));
+        }
+
+        /// <summary>
+        /// Creates an open instantiation of a field. Given Foo&lt;T&gt;.Field, returns
+        /// Foo&lt;!0&gt;.Field. If the owning type is not generic, returns the <paramref name="field"/>.
+        /// </summary>
+        public static FieldDesc InstantiateAsOpen(this FieldDesc field)
+        {
+            Debug.Assert(field.GetTypicalFieldDefinition() == field);
+
+            TypeDesc owner = field.OwningType;
+
+            if (owner.HasInstantiation)
+            {
+                var instantiatedOwner = (InstantiatedType)owner.InstantiateAsOpen();
+                return field.Context.GetFieldForInstantiatedType(field, instantiatedOwner);
+            }
+
+            return field;
         }
 
         /// <summary>
@@ -295,7 +327,7 @@ namespace Internal.TypeSystem
 
             if (owner.HasInstantiation)
             {
-                MetadataType instantiatedOwner = ((MetadataType)owner).InstantiateAsOpen();
+                MetadataType instantiatedOwner = (MetadataType)owner.InstantiateAsOpen();
                 return method.Context.GetMethodForInstantiatedType(method, (InstantiatedType)instantiatedOwner);
             }
 

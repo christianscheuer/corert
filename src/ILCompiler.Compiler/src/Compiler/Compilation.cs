@@ -26,9 +26,9 @@ namespace ILCompiler
         protected readonly NodeFactory _nodeFactory;
         protected readonly Logger _logger;
 
-        internal NameMangler NameMangler => _nameMangler;
-        internal NodeFactory NodeFactory => _nodeFactory;
-        internal CompilerTypeSystemContext TypeSystemContext => NodeFactory.TypeSystemContext;
+        public NameMangler NameMangler => _nameMangler;
+        public NodeFactory NodeFactory => _nodeFactory;
+        public CompilerTypeSystemContext TypeSystemContext => NodeFactory.TypeSystemContext;
         internal Logger Logger => _logger;
         internal PInvokeILProvider PInvokeILProvider { get; }
 
@@ -65,9 +65,6 @@ namespace ILCompiler
             // https://github.com/dotnet/corert/issues/2454
             // https://github.com/dotnet/corert/issues/2149
             if (this is CppCodegenCompilation) forceLazyPInvokeResolution = false;
-            // TODO: Workaround missing PInvokes with multifile compilation
-            // https://github.com/dotnet/corert/issues/2454
-            if (!nodeFactory.CompilationModuleGroup.IsSingleFileCompilation) forceLazyPInvokeResolution = true;
             PInvokeILProvider = new PInvokeILProvider(new PInvokeILEmitterConfiguration(forceLazyPInvokeResolution));
 
             _methodILCache = new ILProvider(PInvokeILProvider);
@@ -165,7 +162,7 @@ namespace ILCompiler
         void ICompilation.Compile(string outputFile)
         {
             // In multi-module builds, set the compilation unit prefix to prevent ambiguous symbols in linked object files
-            _nameMangler.CompilationUnitPrefix = _nodeFactory.CompilationModuleGroup.IsSingleFileCompilation ? "" : NodeFactory.NameMangler.SanitizeName(Path.GetFileNameWithoutExtension(outputFile));
+            _nameMangler.CompilationUnitPrefix = _nodeFactory.CompilationModuleGroup.IsSingleFileCompilation ? "" : Path.GetFileNameWithoutExtension(outputFile);
             CompileInternal(outputFile);
         }
 
@@ -209,6 +206,31 @@ namespace ILCompiler
                 {
                     _graph.AddRoot(_factory.ConstructedTypeSymbol(type), reason);
                 }
+            }
+
+            public void RootStaticBasesForType(TypeDesc type, string reason)
+            {
+                Debug.Assert(!type.IsGenericDefinition);
+
+                MetadataType metadataType = type as MetadataType;
+                if (metadataType != null)
+                {
+                    if (metadataType.ThreadStaticFieldSize > 0)
+                    {
+                        _graph.AddRoot(_factory.TypeThreadStaticIndex(metadataType), reason);
+                    }
+
+                    if (metadataType.GCStaticFieldSize > 0)
+                    {
+                        _graph.AddRoot(_factory.TypeGCStaticsSymbol(metadataType), reason);
+                    }
+
+                    if (metadataType.NonGCStaticFieldSize > 0)
+                    {
+                        _graph.AddRoot(_factory.TypeNonGCStaticsSymbol(metadataType), reason);
+                    }
+                }
+
             }
         }
     }

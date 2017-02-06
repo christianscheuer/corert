@@ -40,18 +40,20 @@ namespace ILCompiler.DependencyAnalysis
 
         public override bool ShouldSkipEmittingObjectNode(NodeFactory factory)
         {
+            _owner.ComputeOptionalEETypeFields(factory, relocsOnly: false);
             return _owner.ShouldSkipEmittingObjectNode(factory) || !_owner.HasOptionalFields;
         }
 
         public override ObjectData GetData(NodeFactory factory, bool relocsOnly = false)
         {
             ObjectDataBuilder objData = new ObjectDataBuilder(factory);
-            objData.RequirePointerAlignment();
-            objData.DefinedSymbols.Add(this);
+            objData.RequireInitialPointerAlignment();
+            objData.AddSymbol(this);
 
             if (!relocsOnly)
             {
-                objData.EmitBytes(_owner.GetOptionalFieldsData());
+                _owner.ComputeOptionalEETypeFields(factory, relocsOnly: false);
+                objData.EmitBytes(_owner.GetOptionalFieldsData(factory));
             }
             
             return objData.ToObjectData();

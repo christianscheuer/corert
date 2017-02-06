@@ -33,7 +33,7 @@ namespace System
         Machine = 2,
     }
 
-    public static partial class Environment
+    internal static partial class Environment
     {
         /*==================================TickCount===================================
         **Action: Gets the number of ticks since the system was started.
@@ -47,11 +47,6 @@ namespace System
             {
                 return (int)TickCount64;
             }
-        }
-
-        public static string[] GetCommandLineArgs()
-        {
-            return EnvironmentAugments.GetCommandLineArgs();
         }
 
         //// Note: The CLR's Watson bucketization code looks at the caller of the FCALL method
@@ -151,19 +146,5 @@ namespace System
                 return EnvironmentAugments.StackTrace;
             }
         }
-
-        public static int ExitCode
-        {
-            get
-            {
-                return EnvironmentAugments.ExitCode;
-            }
-            set
-            {
-                EnvironmentAugments.ExitCode = value;
-            }
-        }
-
-        public static void Exit(int exitCode) => EnvironmentAugments.Exit(exitCode);
     }
 }

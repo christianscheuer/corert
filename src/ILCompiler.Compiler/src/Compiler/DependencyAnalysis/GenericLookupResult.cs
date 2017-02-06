@@ -16,18 +16,18 @@ namespace ILCompiler.DependencyAnalysis
     /// Represents the result of a generic lookup within a canonical method body.
     /// The concrete artifact the generic lookup will result in can only be determined after substituting
     /// runtime determined types with a concrete generic context. Use
-    /// <see cref="GetTarget(NodeFactory, Instantiation, Instantiation)"/> to obtain the concrete
+    /// <see cref="GetTarget(NodeFactory, Instantiation, Instantiation, GenericDictionaryNode)"/> to obtain the concrete
     /// node the result points to.
     /// </summary>
     public abstract class GenericLookupResult
     {
-        public abstract ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation);
+        public abstract ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary);
         public abstract void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb);
         public abstract override string ToString();
 
-        public virtual void EmitDictionaryEntry(ref ObjectDataBuilder builder, NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public virtual void EmitDictionaryEntry(ref ObjectDataBuilder builder, NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
-            builder.EmitPointerReloc(GetTarget(factory, typeInstantiation, methodInstantiation));
+            builder.EmitPointerReloc(GetTarget(factory, typeInstantiation, methodInstantiation, dictionary));
         }
     }
 
@@ -44,7 +44,7 @@ namespace ILCompiler.DependencyAnalysis
             _type = type;
         }
 
-        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
             // We are getting a constructed type symbol because this might be something passed to newobj.
             TypeDesc instantiatedType = _type.InstantiateSignature(typeInstantiation, methodInstantiation);
@@ -61,6 +61,34 @@ namespace ILCompiler.DependencyAnalysis
     }
 
     /// <summary>
+    /// Generic lookup result that points to a RuntimeMethodHandle.
+    /// </summary>
+    internal sealed class MethodHandleGenericLookupResult : GenericLookupResult
+    {
+        private MethodDesc _method;
+
+        public MethodHandleGenericLookupResult(MethodDesc method)
+        {
+            Debug.Assert(method.IsRuntimeDeterminedExactMethod, "Concrete method in a generic dictionary?");
+            _method = method;
+        }
+
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
+        {
+            MethodDesc instantiatedMethod = _method.InstantiateSignature(typeInstantiation, methodInstantiation);
+            return factory.RuntimeMethodHandle(instantiatedMethod);
+        }
+
+        public override void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
+        {
+            sb.Append("MethodHandle_");
+            sb.Append(nameMangler.GetMangledMethodName(_method));
+        }
+
+        public override string ToString() => $"MethodHandle: {_method}";
+    }
+
+    /// <summary>
     /// Generic lookup result that points to a method dictionary.
     /// </summary>
     internal sealed class MethodDictionaryGenericLookupResult : GenericLookupResult
@@ -73,7 +101,7 @@ namespace ILCompiler.DependencyAnalysis
             _method = method;
         }
 
-        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
             MethodDesc instantiatedMethod = _method.InstantiateSignature(typeInstantiation, methodInstantiation);
             return factory.MethodGenericDictionary(instantiatedMethod);
@@ -81,11 +109,11 @@ namespace ILCompiler.DependencyAnalysis
 
         public override void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
         {
-            sb.Append("MethodHandle_");
+            sb.Append("MethodDictionary_");
             sb.Append(nameMangler.GetMangledMethodName(_method));
         }
 
-        public override string ToString() => $"MethodHandle: {_method}";
+        public override string ToString() => $"MethodDictionary: {_method}";
     }
 
     /// <summary>
@@ -101,15 +129,15 @@ namespace ILCompiler.DependencyAnalysis
             _method = method;
         }
 
-        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
             MethodDesc instantiatedMethod = _method.InstantiateSignature(typeInstantiation, methodInstantiation);
             return factory.FatFunctionPointer(instantiatedMethod);
         }
 
-        public override void EmitDictionaryEntry(ref ObjectDataBuilder builder, NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public override void EmitDictionaryEntry(ref ObjectDataBuilder builder, NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
-            builder.EmitPointerReloc(GetTarget(factory, typeInstantiation, methodInstantiation), FatFunctionPointerConstants.Offset);
+            builder.EmitPointerReloc(GetTarget(factory, typeInstantiation, methodInstantiation, dictionary), FatFunctionPointerConstants.Offset);
         }
 
         public override void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
@@ -124,7 +152,7 @@ namespace ILCompiler.DependencyAnalysis
     /// <summary>
     /// Generic lookup result that points to a virtual dispatch stub.
     /// </summary>
-    internal sealed class VirtualDispatchGenericLookupResult : GenericLookupResult
+    public sealed class VirtualDispatchGenericLookupResult : GenericLookupResult
     {
         private MethodDesc _method;
 
@@ -139,10 +167,23 @@ namespace ILCompiler.DependencyAnalysis
             _method = method;
         }
 
-        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
-            MethodDesc instantiatedMethod = _method.InstantiateSignature(typeInstantiation, methodInstantiation);
-            return factory.ReadyToRunHelper(ReadyToRunHelperId.VirtualCall, instantiatedMethod);
+            if (factory.Target.Abi == TargetAbi.CoreRT)
+            {
+                MethodDesc instantiatedMethod = _method.InstantiateSignature(typeInstantiation, methodInstantiation);
+                return factory.ReadyToRunHelper(ReadyToRunHelperId.VirtualCall, instantiatedMethod);
+            }
+            else
+            {
+                return GetInterfaceDispatchCell(factory, dictionary);
+            }
+        }
+
+        public InterfaceDispatchCellNode GetInterfaceDispatchCell(NodeFactory factory, GenericDictionaryNode dictionary)
+        {
+            MethodDesc instantiatedMethod = _method.InstantiateSignature(dictionary.TypeInstantiation, dictionary.MethodInstantiation);
+            return factory.InterfaceDispatchCell(instantiatedMethod, dictionary.GetMangledName());
         }
 
         public override void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
@@ -157,7 +198,7 @@ namespace ILCompiler.DependencyAnalysis
     /// <summary>
     /// Generic lookup result that points to a virtual function address load stub.
     /// </summary>
-    internal sealed class VirtualResolveGenericLookupResult : GenericLookupResult
+    public sealed class VirtualResolveGenericLookupResult : GenericLookupResult
     {
         private MethodDesc _method;
 
@@ -172,13 +213,26 @@ namespace ILCompiler.DependencyAnalysis
             _method = method;
         }
 
-        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
-            MethodDesc instantiatedMethod = _method.InstantiateSignature(typeInstantiation, methodInstantiation);
+            if (factory.Target.Abi == TargetAbi.CoreRT)
+            {
+                MethodDesc instantiatedMethod = _method.InstantiateSignature(typeInstantiation, methodInstantiation);
 
-            // https://github.com/dotnet/corert/issues/2342 - we put a pointer to the virtual call helper into the dictionary
-            // but this should be something that will let us compute the target of the dipatch (e.g. interface dispatch cell).
-            return factory.ReadyToRunHelper(ReadyToRunHelperId.VirtualCall, instantiatedMethod);
+                // https://github.com/dotnet/corert/issues/2342 - we put a pointer to the virtual call helper into the dictionary
+                // but this should be something that will let us compute the target of the dipatch (e.g. interface dispatch cell).
+                return factory.ReadyToRunHelper(ReadyToRunHelperId.VirtualCall, instantiatedMethod);
+            }
+            else
+            {
+                return GetInterfaceDispatchCell(factory, dictionary);
+            }
+        }
+
+        public InterfaceDispatchCellNode GetInterfaceDispatchCell(NodeFactory factory, GenericDictionaryNode dictionary)
+        {
+            MethodDesc instantiatedMethod = _method.InstantiateSignature(dictionary.TypeInstantiation, dictionary.MethodInstantiation);
+            return factory.InterfaceDispatchCell(instantiatedMethod, dictionary.GetMangledName());
         }
 
         public override void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
@@ -204,7 +258,7 @@ namespace ILCompiler.DependencyAnalysis
             _type = (MetadataType)type;
         }
 
-        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
             var instantiatedType = (MetadataType)_type.InstantiateSignature(typeInstantiation, methodInstantiation);
             return factory.TypeNonGCStaticsSymbol(instantiatedType);
@@ -233,7 +287,7 @@ namespace ILCompiler.DependencyAnalysis
             _type = (MetadataType)type;
         }
 
-        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
             var instantiatedType = (MetadataType)_type.InstantiateSignature(typeInstantiation, methodInstantiation);
             return factory.TypeThreadStaticIndex(instantiatedType);
@@ -262,7 +316,7 @@ namespace ILCompiler.DependencyAnalysis
             _type = (MetadataType)type;
         }
 
-        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation)
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
         {
             var instantiatedType = (MetadataType)_type.InstantiateSignature(typeInstantiation, methodInstantiation);
             return factory.TypeGCStaticsSymbol(instantiatedType);
@@ -275,5 +329,62 @@ namespace ILCompiler.DependencyAnalysis
         }
 
         public override string ToString() => $"GCStaticBase: {_type}";
+    }
+
+    /// <summary>
+    /// Generic lookup result that points to an object allocator.
+    /// </summary>
+    internal sealed class ObjectAllocatorGenericLookupResult : GenericLookupResult
+    {
+        private TypeDesc _type;
+
+        public ObjectAllocatorGenericLookupResult(TypeDesc type)
+        {
+            Debug.Assert(type.IsRuntimeDeterminedSubtype, "Concrete type in a generic dictionary?");
+            _type = type;
+        }
+
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
+        {
+            TypeDesc instantiatedType = _type.InstantiateSignature(typeInstantiation, methodInstantiation);
+            return factory.ExternSymbol(JitHelper.GetNewObjectHelperForType(instantiatedType));
+        }
+
+        public override void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
+        {
+            sb.Append("AllocObject_");
+            sb.Append(nameMangler.GetMangledTypeName(_type));
+        }
+
+        public override string ToString() => $"AllocObject: {_type}";
+    }
+
+    /// <summary>
+    /// Generic lookup result that points to an array allocator.
+    /// </summary>
+    internal sealed class ArrayAllocatorGenericLookupResult : GenericLookupResult
+    {
+        private TypeDesc _type;
+
+        public ArrayAllocatorGenericLookupResult(TypeDesc type)
+        {
+            Debug.Assert(type.IsRuntimeDeterminedSubtype, "Concrete type in a generic dictionary?");
+            _type = type;
+        }
+
+        public override ISymbolNode GetTarget(NodeFactory factory, Instantiation typeInstantiation, Instantiation methodInstantiation, GenericDictionaryNode dictionary)
+        {
+            TypeDesc instantiatedType = _type.InstantiateSignature(typeInstantiation, methodInstantiation);
+            Debug.Assert(instantiatedType.IsArray);
+            return factory.ExternSymbol(JitHelper.GetNewArrayHelperForType(instantiatedType));
+        }
+
+        public override void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
+        {
+            sb.Append("AllocArray_");
+            sb.Append(nameMangler.GetMangledTypeName(_type));
+        }
+
+        public override string ToString() => $"AllocArray: {_type}";
     }
 }
