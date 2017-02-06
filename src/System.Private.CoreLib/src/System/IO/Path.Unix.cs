@@ -14,9 +14,6 @@ namespace System.IO
 
         public static char[] GetInvalidPathChars() => new char[] { '\0' };
 
-        // CMS TODO:
-        private static readonly bool s_isMac = true;//Interop.Sys.GetUnixName() == "OSX";
-
         // Expands the given path to a fully qualified path. 
         public static string GetFullPath(string path)
         {
@@ -201,6 +198,17 @@ namespace System.IO
         }
 
         /// <summary>Gets whether the system is case-sensitive.</summary>
-        internal static bool IsCaseSensitive { get { return !s_isMac; } }
+        internal static bool IsCaseSensitive
+        {
+            get
+            {
+#if PLATFORM_OSX
+                // Mac is case-preserving but case-insensitive by default
+                return false;
+#else
+                return true;
+#endif
+            }
+        }
     }
 }

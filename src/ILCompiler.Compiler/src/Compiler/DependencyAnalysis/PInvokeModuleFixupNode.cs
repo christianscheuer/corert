@@ -37,9 +37,7 @@ namespace ILCompiler.DependencyAnalysis
             ObjectDataBuilder builder = new ObjectDataBuilder(factory);
             builder.AddSymbol(this);
 
-            ISymbolNode nameSymbol = factory.Target.IsWindows ?
-                factory.ConstantUtf16String(_moduleName) :
-                factory.ConstantUtf8String(_moduleName);
+            ISymbolNode nameSymbol = factory.ConstantUtf8String(_moduleName);
 
             //
             // Emit a ModuleFixupCell struct
