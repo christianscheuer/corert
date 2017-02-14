@@ -47,7 +47,19 @@ namespace System.Reflection.Runtime.General
 
             throw new BadImageFormatException();  // Expected TypeRef, Def or Spec with MetadataReader
         }
-        
+
+        // Return any custom modifiers modifying the passed-in type and whose required/optional bit matches the passed in boolean.
+        // Because this is intended to service the GetCustomModifiers() apis, this helper will always return a freshly allocated array
+        // safe for returning to api callers.
+        internal Type[] GetCustomModifiers(bool optional)
+        {
+#if ECMA_METADATA_SUPPORT
+            throw new NotImplementedException();
+#else
+            return _handle.GetCustomModifiers((global::Internal.Metadata.NativeFormat.MetadataReader)Reader, optional);
+#endif
+        }
+
         // 
         // This is a port of the desktop CLR's RuntimeType.FormatTypeName() routine. This routine is used by various Reflection ToString() methods
         // to display the name of a type. Do not use for any other purpose as it inherits some pretty quirky desktop behavior.
@@ -62,7 +74,7 @@ namespace System.Reflection.Runtime.General
                 Exception exception = null;
                 RuntimeTypeInfo runtimeType = TryResolve(typeContext, ref exception);
                 if (runtimeType == null)
-                    return ToStringUtils.UnavailableType;
+                    return Type.DefaultTypeNameWhenMissingMetadata;
 
                 // Because this runtimeType came from a successful TryResolve() call, it is safe to querying the TypeInfo's of the type and its component parts.
                 // If we're wrong, we do have the safety net of a try-catch.
@@ -70,7 +82,7 @@ namespace System.Reflection.Runtime.General
             }
             catch (Exception)
             {
-                return ToStringUtils.UnavailableType;
+                return Type.DefaultTypeNameWhenMissingMetadata;
             }
         }        
     }

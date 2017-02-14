@@ -4,17 +4,21 @@
 
 using System;
 using System.IO;
+using System.Text;
+using System.Threading.Tasks;
 
 using ILCompiler.DependencyAnalysis;
 using ILCompiler.DependencyAnalysisFramework;
 using Internal.Runtime;
 using Internal.TypeSystem;
+using Internal.TypeSystem.Ecma;
 
 namespace ILCompiler
 {
     public class UtcNodeFactory : NodeFactory
     {
         public static string CompilationUnitPrefix = "";
+        public string targetPrefix;
 
         public UtcNodeFactory(CompilerTypeSystemContext context, CompilationModuleGroup compilationModuleGroup, string outputFile) 
             : base(context, compilationModuleGroup)
@@ -22,23 +26,28 @@ namespace ILCompiler
             CreateHostedNodeCaches();
             CompilationUnitPrefix = Path.GetFileNameWithoutExtension(outputFile);
             ThreadStaticsIndex = new ThreadStaticsIndexNode(CompilationUnitPrefix);
+            ThreadStaticsStartOffset = new ThreadStaticsStartNode();
+            targetPrefix = context.Target.Architecture == TargetArchitecture.X86 ? "_" : "";
+            TLSDirectory = new ThreadStaticsDirectoryNode(targetPrefix);
+            TlsStart = new ExternSymbolNode(targetPrefix + "_tls_start");
+            TlsEnd = new ExternSymbolNode(targetPrefix + "_tls_end");
         }
 
         private void CreateHostedNodeCaches()
         {
             _GCStaticDescs = new NodeCache<MetadataType, GCStaticDescNode>((MetadataType type) =>
             {
-                return new GCStaticDescNode(type);
+                return new GCStaticDescNode(type, false);
+            });
+
+            _threadStaticGCStaticDescs = new NodeCache<MetadataType, GCStaticDescNode>((MetadataType type) =>
+            {
+                return new GCStaticDescNode(type, true);
             });
 
             _threadStaticsOffset = new NodeCache<MetadataType, ThreadStaticsOffsetNode>((MetadataType type) =>
             {
                 return new ThreadStaticsOffsetNode(type, this);
-            });
-
-            _threadStaticsIndex = new NodeCache<string, ThreadStaticsIndexNode>((string moduleName) =>
-            {
-                return new ThreadStaticsIndexNode(moduleName);
             });
 
             _hostedGenericDictionaryLayouts = new NodeCache<TypeSystemEntity, UtcDictionaryLayoutNode>((TypeSystemEntity methodOrType) =>
@@ -62,8 +71,11 @@ namespace ILCompiler
             graph.AddRoot(GCStaticDescRegion, "GC Static Desc is always generated");
             graph.AddRoot(ThreadStaticsRegion, "Thread Statics Region is always generated");
             graph.AddRoot(ThreadStaticsOffsetRegion, "Thread Statics Offset Region is always generated");
+            graph.AddRoot(ThreadStaticGCDescRegion, "Thread Statics GC Desc Region is always generated");
             graph.AddRoot(ThreadStaticsIndex, "Thread statics index is always generated");
-
+            graph.AddRoot(ThreadStaticsStartOffset, "Thread statics start offset is always generated");
+            graph.AddRoot(TLSDirectory, "TLS Directory is always generated");
+            
             ReadyToRunHeader.Add(ReadyToRunSectionType.EagerCctor, EagerCctorTable, EagerCctorTable.StartSymbol, EagerCctorTable.EndSymbol);
             ReadyToRunHeader.Add(ReadyToRunSectionType.InterfaceDispatchTable, DispatchMapTable, DispatchMapTable.StartSymbol);
             ReadyToRunHeader.Add(ReadyToRunSectionType.FrozenObjectRegion, FrozenSegmentRegion, FrozenSegmentRegion.StartSymbol, FrozenSegmentRegion.EndSymbol);
@@ -72,6 +84,12 @@ namespace ILCompiler
             ReadyToRunHeader.Add(ReadyToRunSectionType.GCStaticDesc, GCStaticDescRegion, GCStaticDescRegion.StartSymbol, GCStaticDescRegion.EndSymbol);
             ReadyToRunHeader.Add(ReadyToRunSectionType.ThreadStaticRegion, ThreadStaticsRegion, ThreadStaticsRegion.StartSymbol, ThreadStaticsRegion.EndSymbol);
             ReadyToRunHeader.Add(ReadyToRunSectionType.ThreadStaticOffsetRegion, ThreadStaticsOffsetRegion, ThreadStaticsOffsetRegion.StartSymbol, ThreadStaticsOffsetRegion.EndSymbol);
+            ReadyToRunHeader.Add(ReadyToRunSectionType.ThreadStaticGCDescRegion, ThreadStaticGCDescRegion, ThreadStaticGCDescRegion.StartSymbol, ThreadStaticGCDescRegion.EndSymbol);
+            ReadyToRunHeader.Add(ReadyToRunSectionType.ThreadStaticIndex, ThreadStaticsIndex, ThreadStaticsIndex);
+            ReadyToRunHeader.Add(ReadyToRunSectionType.ThreadStaticStartOffset, ThreadStaticsStartOffset, ThreadStaticsStartOffset);
+
+            MetadataManager.AddToReadyToRunHeader(ReadyToRunHeader);
+            MetadataManager.AttachToDependencyGraph(graph);
         }
 
         protected override IMethodNode CreateMethodEntrypointNode(MethodDesc method)
@@ -94,10 +112,20 @@ namespace ILCompiler
             return new ReadyToRunHelperNode(this, helperCall.Item1, helperCall.Item2);
         }
 
+        protected override IMethodNode CreateShadowConcreteMethodNode(MethodDesc method)
+        {
+            // All methods are modeled as ExternMethodSymbolNode in ProjectX for now.
+            return new ShadowConcreteMethodNode<ExternMethodSymbolNode>(method,
+                (ExternMethodSymbolNode)MethodEntrypoint(method.GetCanonMethodTarget(CanonicalFormKind.Specific)));
+        }
+
         public GCStaticDescRegionNode GCStaticDescRegion = new GCStaticDescRegionNode(
             CompilationUnitPrefix + "__GCStaticDescStart", 
             CompilationUnitPrefix + "__GCStaticDescEnd");
 
+        public GCStaticDescRegionNode ThreadStaticGCDescRegion = new GCStaticDescRegionNode(
+            CompilationUnitPrefix + "__ThreadStaticGCDescStart", 
+            CompilationUnitPrefix + "__ThreadStaticGCDescEnd");
 
         public ArrayOfEmbeddedDataNode ThreadStaticsOffsetRegion = new ArrayOfEmbeddedDataNode(
             CompilationUnitPrefix + "__ThreadStaticOffsetRegionStart",
@@ -105,6 +133,15 @@ namespace ILCompiler
             null);
 
         public ThreadStaticsIndexNode ThreadStaticsIndex;
+
+        public ThreadStaticsStartNode ThreadStaticsStartOffset;
+
+        public ThreadStaticsDirectoryNode TLSDirectory;
+
+        // These two are defined in startup code to mark start and end of the entire Thread Local Storage area,
+        // including the TLS data from different managed and native object files.
+        public ExternSymbolNode TlsStart;
+        public ExternSymbolNode TlsEnd;
 
         private NodeCache<MetadataType, GCStaticDescNode> _GCStaticDescs;
 
@@ -116,7 +153,21 @@ namespace ILCompiler
             }
             else
             {
-                return ExternSymbol(GCStaticDescNode.GetMangledName(type));
+                return ExternSymbol(GCStaticDescNode.GetMangledName(type, false));
+            }
+        }
+
+        private NodeCache<MetadataType, GCStaticDescNode> _threadStaticGCStaticDescs;
+
+        public ISymbolNode TypeThreadStaticGCDescNode(MetadataType type)
+        {
+            if (CompilationModuleGroup.ContainsType(type))
+            {
+                return _threadStaticGCStaticDescs.GetOrAdd(type);
+            }
+            else
+            {
+                return ExternSymbol(GCStaticDescNode.GetMangledName(type, true));
             }
         }
 
@@ -133,8 +184,6 @@ namespace ILCompiler
                 return ExternSymbol(ThreadStaticsOffsetNode.GetMangledName(type));
             }
         }
-
-        private NodeCache<string, ThreadStaticsIndexNode> _threadStaticsIndex;
 
         public ISymbolNode ThreadStaticsOffsetSymbol(MetadataType type)
         {

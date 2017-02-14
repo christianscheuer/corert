@@ -126,10 +126,16 @@ namespace ILCompiler.DependencyAnalysis
             _optionalFieldsBuilder.SetFieldValue(EETypeOptionalFieldTag.DispatchMap, checked((uint)index));
         }
 
+        public static string GetMangledName(TypeDesc type, NameMangler nameMangler)
+        {
+            return "__EEType_" + nameMangler.GetMangledTypeName(type);
+        }
+
         public virtual void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
         {
             sb.Append("__EEType_").Append(nameMangler.GetMangledTypeName(_type));
         }
+        
         public int Offset => GCDescSize;
         public override bool IsShareable => IsTypeNodeShareable(_type);
 
@@ -210,7 +216,7 @@ namespace ILCompiler.DependencyAnalysis
         }
 
         protected virtual int GCDescSize => 0;
-        
+
         protected virtual void OutputGCDesc(ref ObjectDataBuilder builder)
         {
             // Non-constructed EETypeNodes get no GC Desc
@@ -245,7 +251,24 @@ namespace ILCompiler.DependencyAnalysis
                 flags |= (UInt16)EETypeFlags.GenericVarianceFlag;
             }
 
-            // Todo: RelatedTypeViaIATFlag when we support cross-module EETypes
+            TypeDesc relatedType = null;
+            if (_type.IsArray || _type.IsPointer || _type.IsByRef)
+            {
+                relatedType = ((ParameterizedType)_type).ParameterType;
+            }
+            else
+            {
+                relatedType = _type.BaseType;
+            }
+
+            // If the related type (base type / array element type / pointee type) is not part of this compilation group, and
+            // the output binaries will be multi-file (not multiple object files linked together), indicate to the runtime
+            // that it should indirect through the import address table
+            if (relatedType != null && factory.CompilationModuleGroup.ShouldReferenceThroughImportTable(relatedType))
+            {
+                flags |= (UInt16)EETypeFlags.RelatedTypeViaIATFlag;
+            }
+
             // Todo: Generic Type Definition EETypes
 
             if (HasOptionalFields)
@@ -536,7 +559,7 @@ namespace ILCompiler.DependencyAnalysis
         /// </summary>
         protected virtual void ComputeICastableVirtualMethodSlots(NodeFactory factory)
         {
-            if (_type.IsInterface)
+            if (_type.IsInterface || !EmitVirtualSlotsAndInterfaces)
                 return;
 
             foreach (DefType itf in _type.RuntimeInterfaces)

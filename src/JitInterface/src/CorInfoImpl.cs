@@ -499,8 +499,19 @@ namespace Internal.JitInterface
             Get_CORINFO_SIG_INFO(method.Signature, out sig);
 
             // Does the method have a hidden parameter?
-            if ((method.RequiresInstArg() && !isFatFunctionPointer && !_compilation.TypeSystemContext.IsSpecialUnboxingThunkTargetMethod(method))
-                || method.IsArrayAddressMethod())
+            bool hasHiddenParameter = method.RequiresInstArg() && !isFatFunctionPointer;
+
+            // Some intrinsics will beg to differ about the hasHiddenParameter decision
+            if (method.IsIntrinsic)
+            {
+                if (_compilation.TypeSystemContext.IsSpecialUnboxingThunkTargetMethod(method))
+                    hasHiddenParameter = false;
+
+                if (method.IsArrayAddressMethod())
+                    hasHiddenParameter = true;
+            }
+
+            if (hasHiddenParameter)
             {
                 sig.callConv |= CorInfoCallConv.CORINFO_CALLCONV_PARAMTYPE;
             }
@@ -2606,7 +2617,7 @@ namespace Internal.JitInterface
 
             bool allowInstParam = (flags & CORINFO_CALLINFO_FLAGS.CORINFO_CALLINFO_ALLOWINSTPARAM) != 0;
 
-            if (directCall && !allowInstParam && targetMethod.RequiresInstArg())
+            if (directCall && !allowInstParam && targetMethod.GetCanonMethodTarget(CanonicalFormKind.Specific).RequiresInstArg())
             {
                 // JIT needs a single address to call this method but the method needs a hidden argument.
                 // We need a fat function pointer for this that captures both things.
@@ -2615,10 +2626,10 @@ namespace Internal.JitInterface
                 // JIT won't expect fat function pointers unless this is e.g. delegate creation
                 Debug.Assert((flags & CORINFO_CALLINFO_FLAGS.CORINFO_CALLINFO_LDFTN) != 0);
 
+                pResult.kind = CORINFO_CALL_KIND.CORINFO_CALL_CODE_POINTER;
+
                 if (pResult.exactContextNeedsRuntimeLookup)
                 {
-                    pResult.kind = CORINFO_CALL_KIND.CORINFO_CALL_CODE_POINTER;
-
                     pResult.codePointerOrStubLookup.lookupKind.needsRuntimeLookup = true;
                     pResult.codePointerOrStubLookup.lookupKind.runtimeLookupFlags = 0;
                     pResult.codePointerOrStubLookup.runtimeLookup.indirections = CORINFO.USEHELPER;
@@ -2636,26 +2647,28 @@ namespace Internal.JitInterface
                 }
                 else
                 {
-                    // Probably just grab a fat function pointer from the node factory and return it as the address.
-                    // Couldn't really test this so leaving it to throw. We'll also need to set the right bit.
-                    throw new NotImplementedException();
+                    pResult.codePointerOrStubLookup.constLookup.accessType = InfoAccessType.IAT_VALUE;
+                    pResult.codePointerOrStubLookup.constLookup.addr = (void*)ObjectToHandle(
+                        _compilation.NodeFactory.FatFunctionPointer(targetMethod));
                 }
             }
             else if (directCall)
             {
-                // If this is an intrinsic method with a callsite-specific expansion, this will replace
-                // the method with a method the intrinsic expands into. If it's not the special intrinsic,
-                // method stays unchanged.
+                bool referencingArrayAddressMethod = false;
+
                 if (targetMethod.IsIntrinsic)
                 {
+                    // If this is an intrinsic method with a callsite-specific expansion, this will replace
+                    // the method with a method the intrinsic expands into. If it's not the special intrinsic,
+                    // method stays unchanged.
                     var methodIL = (MethodIL)HandleToObject((IntPtr)pResolvedToken.tokenScope);
                     targetMethod = _compilation.ExpandIntrinsicForCallsite(targetMethod, methodIL.OwningMethod);
-                }
 
-                // For multidim array Address method, we pretend the method requires a hidden instantiation argument
-                // (even though it doesn't need one). We'll actually swap the method out for a differnt one with
-                // a matching calling convention later. See ArrayMethod for a description.
-                bool referencingArrayAddressMethod = targetMethod.IsArrayAddressMethod();
+                    // For multidim array Address method, we pretend the method requires a hidden instantiation argument
+                    // (even though it doesn't need one). We'll actually swap the method out for a differnt one with
+                    // a matching calling convention later. See ArrayMethod for a description.
+                    referencingArrayAddressMethod = targetMethod.IsArrayAddressMethod();
+                }
 
                 MethodDesc concreteMethod = targetMethod;
                 targetMethod = targetMethod.GetCanonMethodTarget(CanonicalFormKind.Specific);
@@ -3154,6 +3167,10 @@ namespace Internal.JitInterface
                     }
 
                     relocTarget = (ISymbolNode)targetObject;
+
+                    if (relocTarget is FatFunctionPointerNode)
+                        relocDelta = Runtime.FatFunctionPointerConstants.Offset;
+
                     break;
             }
 

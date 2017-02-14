@@ -13,6 +13,8 @@ using Internal.Metadata.NativeFormat.Writer;
 using ILCompiler.Metadata;
 using ILCompiler.DependencyAnalysis;
 
+using Debug = System.Diagnostics.Debug;
+
 namespace ILCompiler
 {
     /// <summary>
@@ -31,6 +33,7 @@ namespace ILCompiler
         private HashSet<MetadataType> _typeDefinitionsGenerated = new HashSet<MetadataType>();
         private HashSet<MethodDesc> _methodDefinitionsGenerated = new HashSet<MethodDesc>();
         private HashSet<ModuleDesc> _modulesSeen = new HashSet<ModuleDesc>();
+        private Dictionary<DynamicInvokeMethodSignature, MethodDesc> _dynamicInvokeThunks = new Dictionary<DynamicInvokeMethodSignature, MethodDesc>();
 
         protected override void AddGeneratedType(TypeDesc type)
         {
@@ -47,7 +50,7 @@ namespace ILCompiler
             base.AddGeneratedType(type);
         }
 
-        public override HashSet<ModuleDesc> GetModulesWithMetadata()
+        public override IEnumerable<ModuleDesc> GetCompilationModulesWithMetadata()
         {
             return _modulesSeen;
         }
@@ -127,15 +130,48 @@ namespace ILCompiler
             }
         }
 
+        /// <summary>
+        /// Is there a reflection invoke stub for a method that is invokable?
+        /// </summary>
+        public override bool HasReflectionInvokeStubForInvokableMethod(MethodDesc method)
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// Gets a stub that can be used to reflection-invoke a method with a given signature.
+        /// </summary>
+        public override MethodDesc GetReflectionInvokeStub(MethodDesc method)
+        {
+            TypeSystemContext context = method.Context;
+            var sig = method.Signature;
+
+            // Get a generic method that can be used to invoke method with this shape.
+            MethodDesc thunk;
+            var lookupSig = new DynamicInvokeMethodSignature(sig);
+            if (!_dynamicInvokeThunks.TryGetValue(lookupSig, out thunk))
+            {
+                thunk = new DynamicInvokeMethodThunk(_nodeFactory.CompilationModuleGroup.GeneratedAssembly.GetGlobalModuleType(), lookupSig);
+                _dynamicInvokeThunks.Add(lookupSig, thunk);
+            }
+
+            return InstantiateDynamicInvokeMethodForMethod(thunk, method);
+        }
+
         private struct GeneratedTypesAndCodeMetadataPolicy : IMetadataPolicy
         {
             private CompilerGeneratedMetadataManager _parent;
             private ExplicitScopeAssemblyPolicyMixin _explicitScopeMixin;
+            private Dictionary<MetadataType, bool> _isAttributeCache;
 
             public GeneratedTypesAndCodeMetadataPolicy(CompilerGeneratedMetadataManager parent)
             {
                 _parent = parent;
                 _explicitScopeMixin = new ExplicitScopeAssemblyPolicyMixin();
+
+                MetadataType systemAttributeType = parent._nodeFactory.TypeSystemContext.SystemModule.GetType("System", "Attribute", false);
+                _isAttributeCache = new Dictionary<MetadataType, bool>();
+                _isAttributeCache.Add(systemAttributeType, true);
             }
 
             public bool GeneratesMetadata(FieldDesc fieldDef)
@@ -163,7 +199,29 @@ namespace ILCompiler
 
             public bool IsBlocked(MetadataType typeDef)
             {
+                // If an attribute type would generate metadata in this blob (had we compiled it), consider it blocked.
+                // Otherwise we end up with an attribute that is an unresolvable TypeRef and we would get a TypeLoadException
+                // when enumerating attributes on anything that has it.
+                if (!GeneratesMetadata(typeDef)
+                    && _parent._nodeFactory.CompilationModuleGroup.ContainsType(typeDef)
+                    && IsAttributeType(typeDef))
+                {
+                    return true;
+                }
+
                 return false;
+            }
+
+            private bool IsAttributeType(MetadataType type)
+            {
+                bool result;
+                if (!_isAttributeCache.TryGetValue(type, out result))
+                {
+                    MetadataType baseType = type.MetadataBaseType;
+                    result = baseType != null && IsAttributeType(baseType);
+                    _isAttributeCache.Add(type, result);
+                }
+                return result;
             }
 
             public ModuleDesc GetModuleOfType(MetadataType typeDef)
