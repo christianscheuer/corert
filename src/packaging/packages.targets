@@ -25,11 +25,11 @@
             <CoreFxPackageVersion>4.4.0-beta-24913-02</CoreFxPackageVersion>
             <NetCoreAppPackageVersion>2.0.0-beta-001368-00</NetCoreAppPackageVersion>
 
-            <JitPackageVersion>2.0.0-beta-25013-02</JitPackageVersion>
+            <JitPackageVersion>2.0.0-beta-25015-04</JitPackageVersion>
 
             <MicrosoftNetCoreNativePackageVersion>1.2.0-beta-24911-02</MicrosoftNetCoreNativePackageVersion>
 
-            <ObjectWriterPackageVersion>1.0.13-prerelease-00001</ObjectWriterPackageVersion>
+            <ObjectWriterPackageVersion>1.0.14-prerelease-00001</ObjectWriterPackageVersion>
             <ObjectWriterNuPkgRid Condition="'$(OSGroup)'=='Linux'">ubuntu.14.04-x64</ObjectWriterNuPkgRid>
             <ObjectWriterNuPkgRid Condition="'$(ObjectWriterNuPkgRid)'==''">$(NuPkgRid)</ObjectWriterNuPkgRid>
         </PropertyGroup>
