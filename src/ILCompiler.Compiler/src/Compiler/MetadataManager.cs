@@ -33,7 +33,8 @@ namespace ILCompiler
         private List<MetadataMapping<FieldDesc>> _fieldMappings;
         private List<MetadataMapping<MethodDesc>> _methodMappings;
 
-        protected readonly NodeFactory _nodeFactory;
+        protected readonly CompilationModuleGroup _compilationModuleGroup;
+        protected readonly CompilerTypeSystemContext _typeSystemContext;
 
         private HashSet<ArrayType> _arrayTypesGenerated = new HashSet<ArrayType>();
         private List<NonGCStaticsNode> _cctorContextsGenerated = new List<NonGCStaticsNode>();
@@ -41,12 +42,14 @@ namespace ILCompiler
         private HashSet<MethodDesc> _methodsGenerated = new HashSet<MethodDesc>();
         private HashSet<GenericDictionaryNode> _genericDictionariesGenerated = new HashSet<GenericDictionaryNode>();
         private List<TypeGVMEntriesNode> _typeGVMEntries = new List<TypeGVMEntriesNode>();
+        internal Dictionary<DelegateInvokeMethodSignature, DelegateMarshallingMethodThunk> DelegateMarshalingThunks = new Dictionary<DelegateInvokeMethodSignature, DelegateMarshallingMethodThunk>();
 
         internal NativeLayoutInfoNode NativeLayoutInfo { get; private set; }
 
-        public MetadataManager(NodeFactory factory)
+        public MetadataManager(CompilationModuleGroup compilationModuleGroup, CompilerTypeSystemContext typeSystemContext)
         {
-            _nodeFactory = factory;
+            _compilationModuleGroup = compilationModuleGroup;
+            _typeSystemContext = typeSystemContext;
         }
 
         public void AttachToDependencyGraph(DependencyAnalyzerBase<NodeFactory> graph)
@@ -66,8 +69,8 @@ namespace ILCompiler
             var metadataNode = new MetadataNode();
             header.Add(BlobIdToReadyToRunSection(ReflectionMapBlob.EmbeddedMetadata), metadataNode, metadataNode, metadataNode.EndSymbol);
 
-            var commonFixupsTableNode = new ExternalReferencesTableNode("CommonFixupsTable", _nodeFactory.Target);
-            var nativeReferencesTableNode = new ExternalReferencesTableNode("NativeReferences", _nodeFactory.Target);
+            var commonFixupsTableNode = new ExternalReferencesTableNode("CommonFixupsTable", _typeSystemContext.Target);
+            var nativeReferencesTableNode = new ExternalReferencesTableNode("NativeReferences", _typeSystemContext.Target);
 
             var resourceDataNode = new ResourceDataNode();
             header.Add(BlobIdToReadyToRunSection(ReflectionMapBlob.BlobIdResourceData), resourceDataNode, resourceDataNode, resourceDataNode.EndSymbol);
@@ -84,6 +87,9 @@ namespace ILCompiler
 
             var invokeMapNode = new ReflectionInvokeMapNode(commonFixupsTableNode);
             header.Add(BlobIdToReadyToRunSection(ReflectionMapBlob.InvokeMap), invokeMapNode, invokeMapNode, invokeMapNode.EndSymbol);
+
+            var delegateMapNode = new DelegateMarshallingStubMapNode(commonFixupsTableNode);
+            header.Add(BlobIdToReadyToRunSection(ReflectionMapBlob.DelegateMarshallingStubMap), delegateMapNode, delegateMapNode, delegateMapNode.EndSymbol);
 
             var arrayMapNode = new ArrayMapNode(commonFixupsTableNode);
             header.Add(BlobIdToReadyToRunSection(ReflectionMapBlob.ArrayMap), arrayMapNode, arrayMapNode, arrayMapNode.EndSymbol);
@@ -134,17 +140,19 @@ namespace ILCompiler
             if (methodNode == null)
                 methodNode = obj as ShadowConcreteMethodNode<MethodCodeNode>;
 
+            if (methodNode == null)
+                methodNode = obj as NonExternMethodSymbolNode;
+
             if (methodNode != null)
             {
                 MethodDesc method = methodNode.Method;
 
-                AddGeneratedType(method.OwningType);
                 AddGeneratedMethod(method);
                 return;
             }
 
             var nonGcStaticSectionNode = obj as NonGCStaticsNode;
-            if (nonGcStaticSectionNode != null && _nodeFactory.TypeSystemContext.HasLazyStaticConstructor(nonGcStaticSectionNode.Type))
+            if (nonGcStaticSectionNode != null && _typeSystemContext.HasLazyStaticConstructor(nonGcStaticSectionNode.Type))
             {
                 _cctorContextsGenerated.Add(nonGcStaticSectionNode);
             }
@@ -252,9 +260,10 @@ namespace ILCompiler
                 {
                     // strip ByRefType off the parameter (the method already has ByRef in the signature)
                     parameterType = ((ByRefType)parameterType).ParameterType;
-                }
 
-                if (parameterType.IsPointer || parameterType.IsFunctionPointer)
+                    Debug.Assert(!parameterType.IsPointer); // TODO: support for methods returning pointer types - https://github.com/dotnet/corert/issues/2113
+                }
+                else if (parameterType.IsPointer || parameterType.IsFunctionPointer)
                 {
                     // For pointer typed parameters, instantiate the method over IntPtr
                     parameterType = context.GetWellKnownType(WellKnownType.IntPtr);
@@ -313,6 +322,19 @@ namespace ILCompiler
 
             MethodDesc instantiatedDynamicInvokeMethod = thunk.Context.GetInstantiatedMethod(thunk, new Instantiation(instantiation));
             return instantiatedDynamicInvokeMethod;
+        }
+
+        internal MethodDesc GetDelegateMarshallingStub(TypeDesc delegateType)
+        {
+            DelegateMarshallingMethodThunk thunk;
+            var lookupSig = new DelegateInvokeMethodSignature(delegateType);
+            if (!DelegateMarshalingThunks.TryGetValue(lookupSig, out thunk))
+            {
+                string stubName = "ReverseDelegateStub__" + NodeFactory.NameMangler.GetMangledTypeName(delegateType);
+                thunk = new DelegateMarshallingMethodThunk(_compilationModuleGroup.GeneratedAssembly.GetGlobalModuleType(), delegateType, stubName);
+                DelegateMarshalingThunks.Add(lookupSig, thunk);
+            }
+            return thunk;
         }
 
         protected virtual void AddGeneratedType(TypeDesc type)

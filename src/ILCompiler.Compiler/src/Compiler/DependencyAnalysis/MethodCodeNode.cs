@@ -51,9 +51,9 @@ namespace ILCompiler.DependencyAnalysis
         
         public override bool StaticDependenciesAreComputed => _methodCode != null;
 
-        public void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
+        public virtual void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
         {
-            sb.Append(NodeFactory.NameMangler.GetMangledMethodName(_method));
+            sb.Append(nameMangler.GetMangledMethodName(_method));
         }
         public int Offset => 0;
         public override bool IsShareable => _method is InstantiatedMethod || EETypeNode.IsTypeNodeShareable(_method.OwningType);
@@ -81,54 +81,37 @@ namespace ILCompiler.DependencyAnalysis
                 }
             }
 
-            // Reflection invoke stub handling is here because in the current reflection model we reflection-enable
-            // all methods that are compiled. Ideally the list of reflection enabled methods should be known before
-            // we even start the compilation process (with the invocation stubs being compilation roots like any other).
-            // The existing model has it's problems: e.g. the invocability of the method depends on inliner decisions.
-            if (factory.MetadataManager.HasReflectionInvokeStub(_method))
+            CodeBasedDependencyAlgorithm.AddDependenciesDueToMethodCodePresence(ref dependencies, factory, _method);
+
+            if (_method.IsPInvoke)
             {
-                if (dependencies == null)
-                    dependencies = new DependencyList();
-
-                if (!_method.IsCanonicalMethod(CanonicalFormKind.Any) /* Shared generics handled in the shadow concrete method node */)
+                MethodSignature methodSig = _method.Signature;
+                if (methodSig.ReturnType.IsDelegate)
                 {
-                    MethodDesc invokeStub = factory.MetadataManager.GetReflectionInvokeStub(Method);
-                    MethodDesc canonInvokeStub = invokeStub.GetCanonMethodTarget(CanonicalFormKind.Specific);
-                    if (invokeStub != canonInvokeStub)
-                        dependencies.Add(new DependencyListEntry(factory.FatFunctionPointer(invokeStub), "Reflection invoke"));
-                    else
-                        dependencies.Add(new DependencyListEntry(factory.MethodEntrypoint(invokeStub), "Reflection invoke"));
+                    AddPInvokeDelegateParameterDependencies(ref dependencies, factory, methodSig.ReturnType);
                 }
 
-                if (_method.OwningType.IsValueType && !_method.Signature.IsStatic)
-                    dependencies.Add(new DependencyListEntry(factory.MethodEntrypoint(_method, unboxingStub: true), "Reflection unboxing stub"));
-            }
-
-            if (_method.HasInstantiation)
-            {
-                var exactMethodInstantiationDependencies = ExactMethodInstantiationsNode.GetExactMethodInstantiationDependenciesForMethod(factory, _method);
-                if (exactMethodInstantiationDependencies != null)
+                for (int i=0; i < methodSig.Length; i++)
                 {
-                    dependencies = dependencies ?? new DependencyList();
-                    dependencies.AddRange(exactMethodInstantiationDependencies);
-                }
-
-                if (_method.IsVirtual)
-                {
-                    // Generic virtual methods dependency tracking
-                    dependencies = dependencies ?? new DependencyList();
-                    dependencies.Add(new DependencyListEntry(factory.GVMDependencies(_method), "GVM Dependencies Support"));
-                }
-
-                var templateMethodDependencies = GenericMethodsTemplateMap.GetTemplateMethodDependencies(factory, _method);
-                if (templateMethodDependencies != null)
-                {
-                    dependencies = dependencies ?? new DependencyList();
-                    dependencies.AddRange(templateMethodDependencies);
+                    if (methodSig[i].IsDelegate)
+                    {
+                        AddPInvokeDelegateParameterDependencies(ref dependencies, factory, methodSig[i]);
+                    }
                 }
             }
 
             return dependencies;
+        }
+
+        private void AddPInvokeDelegateParameterDependencies(ref DependencyList dependencies, NodeFactory factory, TypeDesc parameter)
+        {
+            if (dependencies == null)
+                dependencies = new DependencyList();
+
+            dependencies.Add(factory.NecessaryTypeSymbol(parameter), "Delegate Marshalling Stub");
+
+            var stubMethod = factory.MetadataManager.GetDelegateMarshallingStub(parameter);
+            dependencies.Add(factory.MethodEntrypoint(stubMethod), "Delegate Marshalling Stub");
         }
 
         public override ObjectData GetData(NodeFactory factory, bool relocsOnly)
@@ -171,6 +154,22 @@ namespace ILCompiler.DependencyAnalysis
         {
             Debug.Assert(_debugVarInfos == null);
             _debugVarInfos = debugVarInfos;
+        }
+    }
+
+    internal class UnboxingThunkMethodCodeNode : MethodCodeNode
+    {
+        private MethodDesc _targetMethod;
+
+        public UnboxingThunkMethodCodeNode(MethodDesc method, MethodDesc targetMethod)
+            : base(method)
+        {
+            _targetMethod = targetMethod;
+        }
+
+        public override void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
+        {
+            sb.Append("__unbox_").Append(nameMangler.GetMangledMethodName(_targetMethod));
         }
     }
 }
