@@ -55,6 +55,18 @@ namespace System.Runtime
         [DllImport(Redhawk.BaseName, CallingConvention = CallingConvention.Cdecl)]
         private static extern long RhpGetGcTotalMemory();
 
+        [RuntimeExport("RhStartNoGCRegion")]
+        internal static Int32 RhStartNoGCRegion(Int64 totalSize, bool hasLohSize, Int64 lohSize, bool disallowFullBlockingGC)
+        {
+            return RhpStartNoGCRegion(totalSize, hasLohSize, lohSize, disallowFullBlockingGC);
+        }
+
+        [RuntimeExport("RhEndNoGCRegion")]
+        internal static Int32 RhEndNoGCRegion()
+        {
+            return RhpEndNoGCRegion();
+        }
+
         //
         // internalcalls for System.Runtime.__Finalizer.
         //
@@ -375,14 +387,6 @@ namespace System.Runtime
         [ManuallyManaged(GcPollPolicy.Never)]
         internal extern static IntPtr RhpGetNextThunkStubsBlockAddress(IntPtr currentThunkStubsBlockAddress);
 
-        [MethodImplAttribute(MethodImplOptions.InternalCall)]
-        [RuntimeImport(Redhawk.BaseName, "RhpGetCurrentThunkContext")]
-        public static extern IntPtr GetCurrentInteropThunkContext();
-
-        [MethodImplAttribute(MethodImplOptions.InternalCall)]
-        [RuntimeImport(Redhawk.BaseName, "RhpGetCommonStubAddress")]
-        public static extern IntPtr GetInteropCommonStubAddress();
-
         //------------------------------------------------------------------------------------------------------------
         // PInvoke-based internal calls
         //
@@ -417,5 +421,15 @@ namespace System.Runtime
 
         [DllImport(Redhawk.BaseName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern IntPtr RhAllocateThunksMapping();
+
+        // Enters a no GC region, possibly doing a blocking GC if there is not enough
+        // memory available to satisfy the caller's request.
+        [DllImport(Redhawk.BaseName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern Int32 RhpStartNoGCRegion(Int64 totalSize, bool hasLohSize, Int64 lohSize, bool disallowFullBlockingGC);
+
+        // Exits a no GC region, possibly doing a GC to clean up the garbage that
+        // the caller allocated.
+        [DllImport(Redhawk.BaseName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern Int32 RhpEndNoGCRegion();
     }
 }

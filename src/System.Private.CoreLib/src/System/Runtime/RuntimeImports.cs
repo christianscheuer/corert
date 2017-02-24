@@ -81,7 +81,7 @@ namespace System.Runtime
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         [RuntimeImport(RuntimeLibrary, "RhSetGcLatencyMode")]
-        internal static extern void RhSetGcLatencyMode(GCLatencyMode newLatencyMode);
+        internal static extern int RhSetGcLatencyMode(GCLatencyMode newLatencyMode);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         [RuntimeImport(RuntimeLibrary, "RhIsServerGc")]
@@ -118,6 +118,30 @@ namespace System.Runtime
         [MethodImpl(MethodImplOptions.InternalCall)]
         [RuntimeImport(RuntimeLibrary, "RhpRegisterFrozenSegment")]
         internal static extern bool RhpRegisterFrozenSegment(IntPtr pSegmentStart, int length);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        [RuntimeImport(RuntimeLibrary, "RhRegisterForFullGCNotification")]
+        internal static extern bool RhRegisterForFullGCNotification(int maxGenerationThreshold, int largeObjectHeapThreshold);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        [RuntimeImport(RuntimeLibrary, "RhWaitForFullGCApproach")]
+        internal static extern int RhWaitForFullGCApproach(int millisecondsTimeout);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        [RuntimeImport(RuntimeLibrary, "RhWaitForFullGCComplete")]
+        internal static extern int RhWaitForFullGCComplete(int millisecondsTimeout);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        [RuntimeImport(RuntimeLibrary, "RhCancelFullGCNotification")]
+        internal static extern bool RhCancelFullGCNotification();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        [RuntimeImport(RuntimeLibrary, "RhStartNoGCRegion")]
+        internal static extern int RhStartNoGCRegion(long totalSize, bool hasLohSize, long lohSize, bool disallowFullBlockingGC);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        [RuntimeImport(RuntimeLibrary, "RhEndNoGCRegion")]
+        internal static extern int RhEndNoGCRegion();
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         [RuntimeImport(RuntimeLibrary, "RhpShutdown")]
@@ -432,8 +456,13 @@ namespace System.Runtime
         internal static extern unsafe IntPtr RhpRegisterOsModule(IntPtr osModule);
 
         [RuntimeImport(RuntimeLibrary, "RhpGetModuleSection")]
-        [MethodImplAttribute(MethodImplOptions.InternalCall)] 
-        internal static extern IntPtr RhGetModuleSection(TypeManagerHandle module, ReadyToRunSectionType section, out int length);
+        [MethodImplAttribute(MethodImplOptions.InternalCall)]
+        private static extern IntPtr RhGetModuleSection(ref TypeManagerHandle module, ReadyToRunSectionType section, out int length);
+
+        internal static IntPtr RhGetModuleSection(TypeManagerHandle module, ReadyToRunSectionType section, out int length)
+        {
+            return RhGetModuleSection(ref module, section, out length);
+        }
 
 #if CORERT
         internal static uint RhGetLoadedOSModules(IntPtr[] resultArray)
@@ -488,6 +517,14 @@ namespace System.Runtime
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [RuntimeImport(RuntimeLibrary, "RhSetThreadStaticStorageForModule")]
         internal static unsafe extern bool RhSetThreadStaticStorageForModule(Array storage, Int32 moduleIndex);
+
+        [MethodImplAttribute(MethodImplOptions.InternalCall)]
+        [RuntimeImport(RuntimeLibrary, "RhpGetCurrentThunkContext")]
+        internal static extern IntPtr GetCurrentInteropThunkContext();
+
+        [MethodImplAttribute(MethodImplOptions.InternalCall)]
+        [RuntimeImport(RuntimeLibrary, "RhpGetCommonStubAddress")]
+        internal static extern IntPtr GetInteropCommonStubAddress();
 #endif
 
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
@@ -574,10 +611,10 @@ namespace System.Runtime
         // simply let it be pulled off the stack.
         internal struct ConservativelyReportedRegionDesc
         {
-            IntPtr ptr1;
-            IntPtr ptr2;
-            IntPtr ptr3;
-            IntPtr ptr4;
+            private IntPtr ptr1;
+            private IntPtr ptr2;
+            private IntPtr ptr3;
+            private IntPtr ptr4;
         }
 
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
