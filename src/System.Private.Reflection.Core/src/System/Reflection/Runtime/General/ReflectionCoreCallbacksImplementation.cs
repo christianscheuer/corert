@@ -317,5 +317,27 @@ namespace System.Reflection.Runtime.General
 
             return (RuntimeMethodInfo)methodInfo; // This cast is safe since we already verified that containingType is runtime implemented.
         }
+
+        public sealed override Type GetTypeFromCLSID(Guid clsid, string server, bool throwOnError)
+        {
+            // Note: "throwOnError" is a vacuous parameter. Any errors due to the CLSID not being registered or the server not being found will happen
+            // on the Activator.CreateInstance() call. GetTypeFromCLSID() merely wraps the data in a Type object without any validation.
+            return RuntimeCLSIDTypeInfo.GetRuntimeCLSIDTypeInfo(clsid, server);
+        }
+
+        public sealed override IntPtr GetFunctionPointer(RuntimeMethodHandle runtimeMethodHandle, RuntimeTypeHandle declaringTypeHandle)
+        {
+            MethodBase method = GetMethodFromHandle(runtimeMethodHandle, declaringTypeHandle);
+
+            switch (method)
+            {
+                case RuntimeMethodInfo methodInfo:
+                    return methodInfo.LdFtnResult;
+                case RuntimeConstructorInfo constructorInfo:
+                    return constructorInfo.LdFtnResult;
+                default:
+                    throw new PlatformNotSupportedException();
+            }
+        }
     }
 }

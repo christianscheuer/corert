@@ -22,6 +22,9 @@ namespace PInvokeTests
         private static extern int CheckIncremental(int[] array, int sz);
 
         [DllImport("*", CallingConvention = CallingConvention.StdCall)]
+        private static extern int CheckIncremental_Foo(Foo[] array, int sz);
+
+        [DllImport("*", CallingConvention = CallingConvention.StdCall)]
         private static extern int Inc(ref int value);
 
         [DllImport("*", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode)]
@@ -55,7 +58,7 @@ namespace PInvokeTests
         [DllImport("*", CallingConvention = CallingConvention.StdCall, SetLastError = true)]
         public static extern bool LastErrorTest();
 
-        delegate int Delegate_Int(int a);
+        delegate int Delegate_Int(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j);
         [DllImport("*", CallingConvention = CallingConvention.StdCall)]
         static extern bool ReversePInvoke_Int(Delegate_Int del);
 
@@ -76,7 +79,7 @@ namespace PInvokeTests
             TestSafeHandle();
             TestStringArray();
             TestSizeParamIndex();
-#if !CODEGEN_CPP && Windows_NT
+#if !CODEGEN_CPP
             TestDelegate();
 #endif            
             return 100;
@@ -118,16 +121,34 @@ namespace PInvokeTests
             ThrowIfNotEquals('b', c, "Unichar marshalling failed.");
         }
 
+        struct Foo
+        {
+            public int a;
+            public float b;
+        }
+
         private static void TestArrays()
         {
-            Console.WriteLine("Testing marshalling arrays");
+            Console.WriteLine("Testing marshalling int arrays");
+
             const int ArraySize = 100;
             int[] arr = new int[ArraySize];
             for (int i = 0; i < ArraySize; i++)
                 arr[i] = i;
 
-           ThrowIfNotEquals(0, CheckIncremental(arr, ArraySize), "Array marshalling failed");
-        }
+            ThrowIfNotEquals(0, CheckIncremental(arr, ArraySize), "Array marshalling failed");
+
+            Console.WriteLine("Testing marshalling blittable struct arrays");
+
+            Foo[] arr_foo = new Foo[ArraySize];
+            for (int i = 0; i < ArraySize; i++)
+            {
+                arr_foo[i].a = i;
+                arr_foo[i].b = i;
+            }
+
+            ThrowIfNotEquals(0, CheckIncremental_Foo(arr_foo, ArraySize), "Array marshalling failed");
+       }
 
         private static void TestByRef()
         {
@@ -212,7 +233,7 @@ namespace PInvokeTests
         private static void TestDelegate()
         {
             Console.WriteLine("Testing Delegate");
-            Delegate_Int del = new Delegate_Int(Cube);
+            Delegate_Int del = new Delegate_Int(Sum);
             ThrowIfNotEquals(true, ReversePInvoke_Int(del), "Delegate marshalling failed.");
             unsafe
             {
@@ -225,9 +246,9 @@ namespace PInvokeTests
             }
         }
 
-        static int Cube(int a)
+        static int Sum(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j)
         {
-            return a*a*a;
+            return a + b + c + d + e + f + g + h + i + j;
         }
     }
 
