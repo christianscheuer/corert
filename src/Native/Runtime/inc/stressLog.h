@@ -369,55 +369,65 @@ public:
     #pragma warning( disable : 4312 )
     #endif
     static void LogMsgOL(const char* format)
-    { LogMsg(LF_GC, 0, format); }
+    { 
+        //LogMsg(LF_GC, 0, format); 
+        printf(format);
+    }
 
     template < typename T1 >
     static void LogMsgOL(const char* format, T1 data1)
     {
         C_ASSERT(sizeof(T1) <= sizeof(void*)); 
-        LogMsg(LF_GC, 1, format, (void*)(size_t)data1); 
+        //LogMsg(LF_GC, 1, format, (void*)(size_t)data1); 
+        printf(format, data1);
     }
 
     template < typename T1, typename T2 >
     static void LogMsgOL(const char* format, T1 data1, T2 data2)
     {
         C_ASSERT(sizeof(T1) <= sizeof(void*) && sizeof(T2) <= sizeof(void*)); 
-        LogMsg(LF_GC, 2, format, (void*)(size_t)data1, (void*)(size_t)data2); 
+        //LogMsg(LF_GC, 2, format, (void*)(size_t)data1, (void*)(size_t)data2); 
+        printf(format, data1, data2);
     }
 
     template < typename T1, typename T2, typename T3 >
     static void LogMsgOL(const char* format, T1 data1, T2 data2, T3 data3)
     { 
         C_ASSERT(sizeof(T1) <= sizeof(void*) && sizeof(T2) <= sizeof(void*) && sizeof(T3) <= sizeof(void*)); 
-        LogMsg(LF_GC, 3, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3); 
+        //LogMsg(LF_GC, 3, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3); 
+        printf(format, data1, data2, data3);
     }
 
     template < typename T1, typename T2, typename T3, typename T4 >
     static void LogMsgOL(const char* format, T1 data1, T2 data2, T3 data3, T4 data4)
     { 
         C_ASSERT(sizeof(T1) <= sizeof(void*) && sizeof(T2) <= sizeof(void*) && sizeof(T3) <= sizeof(void*) && sizeof(T4) <= sizeof(void*)); 
-        LogMsg(LF_GC, 4, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3, (void*)(size_t)data4); 
+        //LogMsg(LF_GC, 4, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3, (void*)(size_t)data4); 
+        printf(format, data1, data2, data3, data4);
     }
 
     template < typename T1, typename T2, typename T3, typename T4, typename T5 >
     static void LogMsgOL(const char* format, T1 data1, T2 data2, T3 data3, T4 data4, T5 data5)
     { 
         C_ASSERT(sizeof(T1) <= sizeof(void*) && sizeof(T2) <= sizeof(void*) && sizeof(T3) <= sizeof(void*) && sizeof(T4) <= sizeof(void*) && sizeof(T5) <= sizeof(void*)); 
-        LogMsg(LF_GC, 5, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3, (void*)(size_t)data4, (void*)(size_t)data5); 
+        //LogMsg(LF_GC, 5, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3, (void*)(size_t)data4, (void*)(size_t)data5); 
+        printf(format, data1, data2, data3, data4, data5);
     }
 
     template < typename T1, typename T2, typename T3, typename T4, typename T5, typename T6 >
     static void LogMsgOL(const char* format, T1 data1, T2 data2, T3 data3, T4 data4, T5 data5, T6 data6)
     { 
         C_ASSERT(sizeof(T1) <= sizeof(void*) && sizeof(T2) <= sizeof(void*) && sizeof(T3) <= sizeof(void*) && sizeof(T4) <= sizeof(void*) && sizeof(T5) <= sizeof(void*) && sizeof(T6) <= sizeof(void*)); 
-        LogMsg(LF_GC, 6, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3, (void*)(size_t)data4, (void*)(size_t)data5, (void*)(size_t)data6); 
+        //LogMsg(LF_GC, 6, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3, (void*)(size_t)data4, (void*)(size_t)data5, (void*)(size_t)data6); 
+        printf(format, data1, data2, data3, data4, data5, data6);
     }
 
     template < typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7 >
     static void LogMsgOL(const char* format, T1 data1, T2 data2, T3 data3, T4 data4, T5 data5, T6 data6, T7 data7)
     { 
         C_ASSERT(sizeof(T1) <= sizeof(void*) && sizeof(T2) <= sizeof(void*) && sizeof(T3) <= sizeof(void*) && sizeof(T4) <= sizeof(void*) && sizeof(T5) <= sizeof(void*) && sizeof(T6) <= sizeof(void*) && sizeof(T7) <= sizeof(void*)); 
-        LogMsg(LF_GC, 7, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3, (void*)(size_t)data4, (void*)(size_t)data5, (void*)(size_t)data6, (void*)(size_t)data7); 
+        //LogMsg(LF_GC, 7, format, (void*)(size_t)data1, (void*)(size_t)data2, (void*)(size_t)data3, (void*)(size_t)data4, (void*)(size_t)data5, (void*)(size_t)data6, (void*)(size_t)data7); 
+        printf(format, data1, data2, data3, data4, data5, data6, data7);
     }
 
     #ifdef _MSC_VER
@@ -559,7 +569,10 @@ public:
     {
         va_list Args;
         va_start(Args, format);
-        LogMsg (facility, cArgs, format, Args);
+        //LogMsg (facility, cArgs, format, Args);
+
+        vprintf( format, Args );
+        va_end( Args );
     }
 
     void LogMsg ( UInt32 facility, int cArgs, const char* format, va_list Args);

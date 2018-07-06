@@ -1281,11 +1281,14 @@ Object* Thread::GetThreadStaticStorageForModule(UInt32 moduleIndex)
     if (moduleIndex < m_numThreadLocalModuleStatics)
     {
         Object** threadStaticsStorageHandle = (Object**)m_pThreadLocalModuleStatics[moduleIndex];
+        printf("GetThreadStaticStorageForModule %llu threadStaticsStorageHandle = 0x%08llx\n", PalGetCurrentThreadIdForLogging(), (void*)threadStaticsStorageHandle);
         if (threadStaticsStorageHandle != NULL)
         {
+            printf("GetThreadStaticStorageForModule %llu *threadStaticsStorageHandle = 0x%08llx\n", PalGetCurrentThreadIdForLogging(), (void*)*threadStaticsStorageHandle);
             return *threadStaticsStorageHandle;
         }
     }
+    printf("GetThreadStaticStorageForModule returns null\n");
 
     return NULL;
 }
@@ -1326,8 +1329,11 @@ Boolean Thread::SetThreadStaticStorageForModule(Object * pStorage, UInt32 module
     else
     {
         void* threadStaticsStorageHandle = RhpHandleAlloc(pStorage, 2 /* Normal */);
+        printf("SetThreadStaticStorageForModule %llu: calls RhpHandleAlloc. Handle = 0x%08llx, pStorage = 0x%08llx\n", PalGetCurrentThreadIdForLogging(), threadStaticsStorageHandle, (void*)pStorage);
+
         if (threadStaticsStorageHandle == NULL)
         {
+            printf("SetThreadStaticStorageForModule: RhpHandleAlloc call returned null\n");
             return FALSE;
         }
         m_pThreadLocalModuleStatics[moduleIndex] = threadStaticsStorageHandle;

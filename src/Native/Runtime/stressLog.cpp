@@ -307,6 +307,8 @@ bool StressLog::ReserveStressLogChunks (unsigned chunksToReserve)
 
 void ThreadStressLog::LogMsg ( UInt32 facility, int cArgs, const char* format, va_list Args)
 {
+    vprintf( format, Args );
+    return;
 
     // Asserts in this function cause infinite loops in the asserting mechanism.
     // Just use debug breaks instead.
