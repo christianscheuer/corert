@@ -1333,6 +1333,8 @@ Boolean Thread::SetThreadStaticStorageForModule(Object * pStorage, UInt32 module
     if (m_pThreadLocalModuleStatics[moduleIndex] != NULL)
     {
         RhHandleSet(m_pThreadLocalModuleStatics[moduleIndex], pStorage);
+        printf("SetThreadStaticStorageForModule %llu: calls RhHandleSet. Handle = 0x%08llx, pStorage = 0x%08llx\n", PalGetCurrentThreadIdForLogging(), m_pThreadLocalModuleStatics[moduleIndex], (void*)pStorage);
+        fflush(stdout);
     }
     else
     {
