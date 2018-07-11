@@ -45,6 +45,12 @@ extern "C" void _ReadWriteBarrier(void);
 #endif // _MSC_VER
 #endif //!DACCESS_COMPILE
 
+extern "C" void printMakeForCurrentThread()
+{
+    printf("ManagedThreadId.MakeForCurrentThread called\n");
+    fflush(stdout);
+}
+
 PTR_VOID Thread::GetTransitionFrame()
 {
     if (ThreadStore::GetSuspendingThread() == this)
@@ -1285,10 +1291,12 @@ Object* Thread::GetThreadStaticStorageForModule(UInt32 moduleIndex)
         if (threadStaticsStorageHandle != NULL)
         {
             printf("GetThreadStaticStorageForModule %llu *threadStaticsStorageHandle = 0x%08llx\n", PalGetCurrentThreadIdForLogging(), (void*)*threadStaticsStorageHandle);
+            fflush(stdout);
             return *threadStaticsStorageHandle;
         }
     }
     printf("GetThreadStaticStorageForModule returns null\n");
+    fflush(stdout);
 
     return NULL;
 }
@@ -1330,16 +1338,23 @@ Boolean Thread::SetThreadStaticStorageForModule(Object * pStorage, UInt32 module
     {
         void* threadStaticsStorageHandle = RhpHandleAlloc(pStorage, 2 /* Normal */);
         printf("SetThreadStaticStorageForModule %llu: calls RhpHandleAlloc. Handle = 0x%08llx, pStorage = 0x%08llx\n", PalGetCurrentThreadIdForLogging(), threadStaticsStorageHandle, (void*)pStorage);
+        fflush(stdout);
 
         if (threadStaticsStorageHandle == NULL)
         {
             printf("SetThreadStaticStorageForModule: RhpHandleAlloc call returned null\n");
+            fflush(stdout);
             return FALSE;
         }
         m_pThreadLocalModuleStatics[moduleIndex] = threadStaticsStorageHandle;
     }
 
     return TRUE;
+}
+
+extern "C" void PrintNewObj(int typeTlsIndex, void* mt)
+{
+    printf("AllocateThreadStaticStorageForType: typeTlsIndex=%l, pMT=%p\n", typeTlsIndex, mt);
 }
 
 COOP_PINVOKE_HELPER(Array*, RhGetThreadStaticStorageForModule, (UInt32 moduleIndex))

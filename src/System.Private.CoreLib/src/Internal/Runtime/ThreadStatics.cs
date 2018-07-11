@@ -69,6 +69,9 @@ namespace Internal.Runtime
             return newStorage;
         }
 
+        [System.Runtime.InteropServices.DllImport("*")]
+        private static extern void PrintNewObj(int typeTlsIndex, IntPtr mt);
+
         /// <summary>
         /// This method allocates an object that represents a memory block for all thread static fields of the type
         /// that corresponds to the specified TLS index.
@@ -81,7 +84,11 @@ namespace Internal.Runtime
             // Get a pointer to the beginning of the module's Thread Static section. Then get a pointer
             // to the EEType that represents a memory map for thread statics storage.
             threadStaticRegion = (IntPtr*)RuntimeImports.RhGetModuleSection(typeManager, ReadyToRunSectionType.ThreadStaticRegion, out length);
-            return RuntimeImports.RhNewObject(new EETypePtr(threadStaticRegion[typeTlsIndex]));
+
+            var pMT = threadStaticRegion[typeTlsIndex];
+            PrintNewObj(typeTlsIndex, pMT);
+
+            return RuntimeImports.RhNewObject(new EETypePtr(pMT));
         }
     }
 }

@@ -17203,6 +17203,7 @@ BOOL gc_heap::gc_mark1 (uint8_t* o)
 {
     BOOL marked = !marked (o);
     set_marked (o);
+    printf ("*%p*, pMT=%p, newly marked: %d\n", (size_t)o, *(void**)o, marked);
     dprintf (3, ("*%Ix*, newly marked: %d", (size_t)o, marked));
     return marked;
 }
@@ -34991,6 +34992,11 @@ BOOL gc_heap::should_do_sweeping_gc (BOOL compact_p)
 }
 #endif //GC_CONFIG_DRIVEN
 
+void cmsgcend()
+{
+    printf("gc end\n");
+}
+
 void gc_heap::do_post_gc()
 {
     if (!settings.concurrent)
@@ -35039,6 +35045,9 @@ void gc_heap::do_post_gc()
                       (uint32_t)settings.condemned_generation,
                       (uint32_t)settings.reason);
 #endif // STRESS_LOG
+
+    fflush(stdout);
+    cmsgcend();
 
 #ifdef GC_CONFIG_DRIVEN
     if (!settings.concurrent)

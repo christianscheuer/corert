@@ -482,6 +482,7 @@ void HndDestroyHandle(HHANDLETABLE hTable, uint32_t uType, OBJECTHANDLE handle)
     CONTRACTL_END;
 
     STRESS_LOG2(LF_GC, LL_INFO1000, "DestroyHandle: *%p->%p\n", handle, *(_UNCHECKED_OBJECTREF *)handle);
+    fflush(stdout);
 
     FireEtwDestroyGCHandle((void*) handle, GetClrInstanceId());
     FireEtwPrvDestroyGCHandle((void*) handle, GetClrInstanceId());

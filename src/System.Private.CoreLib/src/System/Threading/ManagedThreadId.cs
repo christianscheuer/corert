@@ -266,8 +266,13 @@ namespace System.Threading
             return t_currentThreadId;
         }
 
+        [System.Runtime.InteropServices.DllImport("*")]
+        private static unsafe extern void printMakeForCurrentThread();
+
         private static int MakeForCurrentThread()
         {
+            printMakeForCurrentThread();
+
             return SetForCurrentThread(new ManagedThreadId());
         }
 
