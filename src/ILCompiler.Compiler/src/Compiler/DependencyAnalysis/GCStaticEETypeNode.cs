@@ -70,7 +70,7 @@ namespace ILCompiler.DependencyAnalysis
 
             // +1 for SyncBlock (in CoreRT static size already includes EEType)
             Debug.Assert(factory.Target.Abi == TargetAbi.CoreRT);
-            int totalSize = (_gcMap.Size + 1) * _target.PointerSize;
+            int totalSize = (_gcMap.Size + 2) * _target.PointerSize;
 
             // We only need to check for containsPointers because ThreadStatics are always allocated
             // on the GC heap (no matter what "HasGCStaticBase" says).
