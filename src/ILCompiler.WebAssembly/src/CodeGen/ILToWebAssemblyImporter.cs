@@ -3049,7 +3049,7 @@ namespace Internal.IL
                 pInvokeFunctionType = LLVMTypeRef.CreateFunction(LLVMTypeRef.Void, new LLVMTypeRef[] { LLVMTypeRef.CreatePointer(pInvokeTransitionFrameType, 0) }, false);
                 pInvokeTransitionFrame = _builder.BuildAlloca(pInvokeTransitionFrameType, "PInvokeTransitionFrame");
                 LLVMValueRef RhpPInvoke2 = GetOrCreateLLVMFunction("RhpPInvoke2", pInvokeFunctionType);
-                _builder.BuildCall(RhpPInvoke2, new LLVMValueRef[] { pInvokeTransitionFrame }, "");
+                //_builder.BuildCall(RhpPInvoke2, new LLVMValueRef[] { pInvokeTransitionFrame }, "");
             }
             // Don't name the return value if the function returns void, it's invalid
             var returnValue = _builder.BuildCall(nativeFunc, llvmArguments, !method.Signature.ReturnType.IsVoid ? "call" : string.Empty);
@@ -3058,7 +3058,7 @@ namespace Internal.IL
             {
                 // add call to go to cooperative mode
                 LLVMValueRef RhpPInvokeReturn2 = GetOrCreateLLVMFunction("RhpPInvokeReturn2", pInvokeFunctionType);
-                _builder.BuildCall(RhpPInvokeReturn2, new LLVMValueRef[] { pInvokeTransitionFrame }, "");
+                //_builder.BuildCall(RhpPInvokeReturn2, new LLVMValueRef[] { pInvokeTransitionFrame }, "");
             }
 
             if (!method.Signature.ReturnType.IsVoid)

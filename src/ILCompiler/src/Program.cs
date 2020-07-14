@@ -274,7 +274,7 @@ namespace ILCompiler
             //
             // Set target Architecture and OS
             //
-            if (_targetArchitectureStr != null)
+            /* if (_targetArchitectureStr != null)
             {
                 if (_targetArchitectureStr.Equals("x86", StringComparison.OrdinalIgnoreCase))
                     _targetArchitecture = TargetArchitecture.X86;
@@ -293,7 +293,9 @@ namespace ILCompiler
                 }
                 else
                     throw new CommandLineException("Target architecture is not supported");
-            }
+            } */
+            _targetArchitecture = TargetArchitecture.X86;
+
             if (_targetOSStr != null)
             {
                 if (_targetOSStr.Equals("windows", StringComparison.OrdinalIgnoreCase))
@@ -426,7 +428,7 @@ namespace ILCompiler
             var simdVectorLength = (_isCppCodegen || _isWasmCodegen) ? SimdVectorLength.None : instructionSetSupport.GetVectorTSimdVector();
             var targetAbi = _isCppCodegen ? TargetAbi.CppCodegen : TargetAbi.CoreRT;
             var targetDetails = new TargetDetails(_targetArchitecture, _targetOS, targetAbi, simdVectorLength);
-            CompilerTypeSystemContext typeSystemContext = 
+            CompilerTypeSystemContext typeSystemContext =
                 new CompilerTypeSystemContext(targetDetails, genericsMode, supportsReflection ? DelegateFeature.All : 0);
 
             //
@@ -557,12 +559,14 @@ namespace ILCompiler
             //
 
             CompilationBuilder builder;
-            if (_isWasmCodegen)
+            /* if (_isWasmCodegen)
                 builder = new WebAssemblyCodegenCompilationBuilder(typeSystemContext, compilationGroup);
             else if (_isCppCodegen)
                 builder = new CppCodegenCompilationBuilder(typeSystemContext, compilationGroup);
             else
-                builder = new RyuJitCompilationBuilder(typeSystemContext, compilationGroup);
+                builder = new RyuJitCompilationBuilder(typeSystemContext, compilationGroup); */
+
+            builder = new WebAssemblyCodegenCompilationBuilder(typeSystemContext, compilationGroup);
 
             string compilationUnitPrefix = _multiFile ? System.IO.Path.GetFileNameWithoutExtension(_outputFilePath) : "";
             builder.UseCompilationUnitPrefix(compilationUnitPrefix);

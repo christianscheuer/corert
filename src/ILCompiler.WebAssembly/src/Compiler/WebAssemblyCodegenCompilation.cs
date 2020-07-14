@@ -32,7 +32,8 @@ namespace ILCompiler
         {
             NodeFactory = nodeFactory;
             LLVMModuleRef m = LLVMModuleRef.CreateWithName("netscripten");
-            m.Target = "wasm32-unknown-unknown-wasm";
+            //m.Target = "wasm32-unknown-unknown-wasm";
+            m.Target = "i386-apple-macosx10.13.0";
             // https://llvm.org/docs/LangRef.html#langref-datalayout
             // e litte endian, mangled names
             // m:e ELF mangling 
@@ -41,7 +42,7 @@ namespace ILCompiler
             // n:32:64 native widths
             // S128 natural alignment of stack
             m.DataLayout = "e-m:e-p:32:32-i64:64-n32:64-S128";
-            Module = m; 
+            Module = m;
 
             Options = options;
             DIBuilder = Module.CreateDIBuilder();

@@ -248,7 +248,8 @@ namespace ILCompiler.DependencyAnalysis
                 RhpReversePInvoke2 = Module.AddFunction("RhpReversePInvoke2", LLVMTypeRef.CreateFunction(LLVMTypeRef.Void, new LLVMTypeRef[] { LLVMTypeRef.CreatePointer(reversePInvokeFrameType, 0) }, false));
             }
 
-            builder.BuildCall(RhpReversePInvoke2, new LLVMValueRef[] { reversePinvokeFrame }, "");
+            //TODO -- doesn't work for x86 yet
+            //builder.BuildCall(RhpReversePInvoke2, new LLVMValueRef[] { reversePinvokeFrame }, "");
 
             var shadowStack = builder.BuildMalloc(LLVMTypeRef.CreateArray(LLVMTypeRef.Int8, 1000000), String.Empty);
             var castShadowStack = builder.BuildPointerCast(shadowStack, LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0), String.Empty);
