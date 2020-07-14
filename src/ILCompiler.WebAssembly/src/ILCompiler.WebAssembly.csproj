@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="LLVMSharp">
-      <Version>9.0.0-beta</Version>
+      <Version>10.0.0-beta</Version>
     </PackageReference>
   </ItemGroup>
 
@@ -59,10 +59,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\..\..\packages\llvmsharp\9.0.0-beta\lib\netstandard2.0\LLVMSharp.dll">
+    <Content Include="..\..\..\packages\llvmsharp\10.0.0-beta\lib\netstandard2.0\LLVMSharp.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <PackageReference Include="libLLVM" Version="9.0.0" />
+    <PackageReference Include="libLLVM" Version="10.0.0" />
   </ItemGroup>
   <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), dir.targets))\dir.targets" />
 </Project>
